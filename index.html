@@ -35,6 +35,7 @@
 
     <link rel="stylesheet" href="style.css?v=2026090803">
     <link rel="stylesheet" href="skill-art.css?v=2026090602">
+    <link rel="stylesheet" href="home-system.css?v=2026102101">
 </head>
 
 <!-- 版本标记: v7.13 物理横扫刀锋 -->
@@ -675,6 +676,8 @@
                         class="notification-badge" id="badge-quest"></span></button>
                 <button class="sys-btn" id="btn-achievements" onclick="togglePanel('achievements')">成就</button>
                 <button class="sys-btn" id="btn-set-collection" onclick="togglePanel('set-collection')">图鉴</button>
+                <button class="sys-btn" id="btn-home" onclick="HomeSystem.toggle()">家园<span
+                        class="notification-badge" id="badge-home"></span></button>
             </div>
             <button id="mobile-menu-toggle" class="mobile-fab mobile-menu-toggle" onclick="toggleMobileMenu(event)"
                 aria-label="展开菜单">☰<span class="mobile-fab-dot" id="mobile-menu-dot"></span></button>
@@ -759,7 +762,7 @@
 
     <script src="gsap.min.js"></script>
     <script src="gsap-animations.js?v=202512301047"></script>
-    <script src="ui-panels.js?v=2026090601"></script>
+    <script src="ui-panels.js?v=2026102101"></script>
     <!-- 业务逻辑脚本 -->
     <script src="changelog.js?v=202606130910"></script>
     <script src="constants.js?v=2026090601"></script>
@@ -782,7 +785,9 @@
     <script src="skill-branches.js?v=202609081935"></script>
     <script src="shield-3d.js?v=2026090804"></script>
     <script src="physical-3d.js?v=2026090810"></script>
-    <script src="game.js?v=202609082135"></script>
+    <script src="game.js?v=2026102101"></script>
+    <script src="home-art.js?v=2026102101"></script>
+    <script src="home-system.js?v=2026102101"></script>
     <script src="skill-art.js?v=2026090602"></script>
     <script src="pocketbase.umd.js"></script>
     <script src="online.js?v=2026090812"></script>
