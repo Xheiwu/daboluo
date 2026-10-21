@@ -25,7 +25,7 @@ const HOME_CONFIG = {
   RARITY_WEIGHT: { 1: { base: 100, growth: 0 }, 2: { base: 40, growth: 0.04 }, 3: { base: 12, growth: 0.08 }, 4: { base: 3, growth: 0.12 } },
   EXPEDITIONS: [
     { id: 'short', name: '近郊巡游', minutes: 30 },
-    { id: 'mid', name: '地宫探索', minutes: 120 },
+    { id: 'mid', name: '镇妖塔探索', minutes: 120 },
     { id: 'long', name: '深渊远征', minutes: 480 }
   ],
   COMFORT_TIERS: [
@@ -49,7 +49,7 @@ const HOME_STAT_NAMES = {
 };
 
 const HOME_DECORATIONS = {
-  stone_lantern:   { name: '石灯笼',     rarity: 1, comfort: 2,  minFloor: 1,  desc: '地宫入口捡来的旧石灯，夜里会亮。' },
+  stone_lantern:   { name: '石灯笼',     rarity: 1, comfort: 2,  minFloor: 1,  desc: '镇妖塔入口捡来的旧石灯，夜里会亮。' },
   bamboo_fence:    { name: '竹篱笆',     rarity: 1, comfort: 2,  minFloor: 1,  desc: '圈出一方小院。' },
   wine_jar:        { name: '女儿红酒坛', rarity: 1, comfort: 2,  minFloor: 1,  desc: '封泥未开，香气已出。' },
   red_lantern:     { name: '红灯笼',     rarity: 2, comfort: 3,  minFloor: 2,  desc: '挂在门口，回家的人远远就能看见。' },
@@ -65,7 +65,7 @@ const HOME_DECORATIONS = {
 
 const HOME_PETS = {
   dango_cat:   { name: '团子猫',   rarity: 1, minFloor: 2, stat: 'goldPct',     base: 3, perLevel: 0.7, desc: '圆滚滚的，看见金币会扑过去。' },
-  firefly:     { name: '萤火灵',   rarity: 1, minFloor: 2, stat: 'mpRegenPct',  base: 4, perLevel: 1,   desc: '在黑暗地宫里为你照路。' },
+  firefly:     { name: '萤火灵',   rarity: 1, minFloor: 2, stat: 'mpRegenPct',  base: 4, perLevel: 1,   desc: '在幽暗的镇妖塔里为你照路。' },
   white_fox:   { name: '小白狐',   rarity: 2, minFloor: 3, stat: 'dropRatePct', base: 2, perLevel: 0.5, desc: '鼻子很灵，总能嗅到宝物。' },
   rock_golem:  { name: '石头精',   rarity: 2, minFloor: 3, stat: 'def',         base: 10, perLevel: 5,  desc: '沉默寡言，挡在你前面。' },
   panda:       { name: '胖胖熊猫', rarity: 2, minFloor: 4, stat: 'maxHpPct',    base: 3, perLevel: 0.7, desc: '抱起来很暖和。' },
@@ -277,7 +277,7 @@ const HomeSystem = {
     return 'new';
   },
 
-  // 击杀钩子：由 game.js 的 finalizeEnemyDeath 调用；地宫挂机传入 { depth, idle: true }，离线结算再加 silent
+  // 击杀钩子：由 game.js 的 finalizeEnemyDeath 调用；镇妖塔挂机传入 { depth, idle: true }，离线结算再加 silent
   onEnemyKilled(enemy, opts = {}) {
     if (typeof player === 'undefined' || !enemy) return [];
     if (!opts.idle && this.inTown()) return [];
@@ -804,7 +804,7 @@ const HomeSystem = {
 
   render_pets(s) {
     const ids = Object.keys(HOME_PETS);
-    return `<div class="home-hint">出战宠物会跟着你下地宫，并提供加成；击杀怪物能让它成长。</div><div class="home-grid">${ids.map(id => {
+    return `<div class="home-hint">出战宠物会跟着你下镇妖塔，并提供加成；击杀怪物能让它成长。</div><div class="home-grid">${ids.map(id => {
       const def = HOME_PETS[id];
       const pet = s.pets[id];
       if (!pet) return `<div class="home-card locked">${HomeArt.img('pet_' + id, 3, 'silhouette')}<div>？？？</div><small>${def.minFloor} 层以下可能遇到</small></div>`;
@@ -822,10 +822,10 @@ const HomeSystem = {
   render_companions(s) {
     const ids = Object.keys(HOME_COMPANIONS);
     const town = this.inTown();
-    return `<div class="home-hint">在地下击败精英或首领时，可能救出被困的伙伴。伙伴可以驻守家园，或者派去探险（离线也会计时）。</div>${ids.map(id => {
+    return `<div class="home-hint">在地下击败精英或镇守大妖时，可能救出被困的伙伴。伙伴可以驻守家园，或者派去探险（离线也会计时）。</div>${ids.map(id => {
       const def = HOME_COMPANIONS[id];
       const c = s.companions[id];
-      if (!c) return `<div class="home-row locked">${HomeArt.img('comp_' + id, 3, 'silhouette')}<div class="home-row-main"><div>？？？</div><small>${def.minFloor} 层以下的精英/首领身边</small></div></div>`;
+      if (!c) return `<div class="home-row locked">${HomeArt.img('comp_' + id, 3, 'silhouette')}<div class="home-row-main"><div>？？？</div><small>${def.minFloor} 层以下的精英/镇守身边</small></div></div>`;
       let action;
       if (c.mode === 'expedition') {
         action = this.expeditionReady(id)

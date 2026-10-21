@@ -1,4 +1,4 @@
-// ========== idle-core.js - 地宫挂机纯逻辑核心 ==========
+// ========== idle-core.js - 镇妖塔挂机纯逻辑核心 ==========
 // 不依赖 Canvas / DOM / 全局 player：输入角色快照，按固定步长模拟战斗，输出事件。
 // 浏览器中挂在 window.IdleCore，Node 中通过 require 使用（tools/test-idle-core.js）。
 (function (root) {
@@ -6,7 +6,7 @@
 
   const IDLE_CONFIG = {
     DT: 0.05,                    // 固定步长（秒）
-    WAVES_PER_FLOOR: 5,          // 每层波次（Boss 层最后一波是首领）
+    WAVES_PER_FLOOR: 5,          // 每层波次（Boss 层最后一波是镇守大妖）
     WALK_TIME: 2.2,              // 波次之间向下行进的时间
     ENEMY_HP_MULT: 1.5,           // 挂机波次怪物更耐打，控制节奏（约 10 击杀/分钟）
     WALK_HEAL_PCT: 0.08,         // 行进时恢复的生命比例
@@ -14,7 +14,7 @@
     ELITE_RATE: 0.1,             // 与主游戏一致
     ENEMY_ATTACK_INTERVAL: 1.7,  // 怪物出手间隔（秒）
     FRONTLINE: 2,                // 同时贴身攻击的近战怪数量，其余近战排队，远程不受限
-    BOSS_COOLDOWN: 300,          // 与主游戏一致：同一层首领 5 分钟刷新一次
+    BOSS_COOLDOWN: 300,          // 与主游戏一致：同一层镇守 5 分钟刷新一次
     RANGED_DMG_MULT: 0.8,
     BASE_ATTACK_INTERVAL: 0.8,   // 与主游戏一致：0.8 / (1 + 攻速%)
     MEDICINE_PER_FLOOR: 3,       // 每层疗伤药
@@ -45,27 +45,27 @@
   // 与 constants.js 的 RARITY 数值一致：1 白 / 2 蓝 / 3 黄 / 4 暗金
   const RARITY = { NORMAL: 1, MAGIC: 2, RARE: 3, UNIQUE: 4 };
 
-  // 与 game.js 普通怪物池一致（名字后续武侠换皮时只改这里的 name）
+  // 镇妖塔妖物：type 与数值沿用 game.js 普通怪物池，只换武侠名（像素图见 idle-art.js）
   const MONSTERS = [
-    { type: 'melee',    name: '沉沦魔',     minFloor: 1, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: false },
-    { type: 'zombie',   name: '僵尸',       minFloor: 1, hpMult: 1.5, dmgMult: 0.8, weight: 20, ranged: false },
-    { type: 'ranged',   name: '骷髅弓箭手', minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: true },
-    { type: 'skeleton', name: '骷髅战士',   minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 15, ranged: false },
-    { type: 'shaman',   name: '沉沦魔巫师', minFloor: 3, hpMult: 1,   dmgMult: 1,   weight: 10, ranged: true },
-    { type: 'ghost',    name: '幽灵鬼魂',   minFloor: 4, hpMult: 0.6, dmgMult: 1.2, weight: 12, ranged: false },
-    { type: 'specter',  name: '闪电幽魂',   minFloor: 5, hpMult: 0.8, dmgMult: 1.4, weight: 10, ranged: true },
-    { type: 'mummy',    name: '木乃伊',     minFloor: 6, hpMult: 1.3, dmgMult: 0.9, weight: 10, ranged: false },
-    { type: 'vampire',  name: '吸血鬼',     minFloor: 7, hpMult: 1.2, dmgMult: 1.3, weight: 10, ranged: true }
+    { type: 'melee',    name: '山魈',       minFloor: 1, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: false },
+    { type: 'zombie',   name: '跳尸',       minFloor: 1, hpMult: 1.5, dmgMult: 0.8, weight: 20, ranged: false },
+    { type: 'ranged',   name: '纸人',       minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: true },
+    { type: 'skeleton', name: '毒蛛',       minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 15, ranged: false },
+    { type: 'shaman',   name: '狐妖',       minFloor: 3, hpMult: 1,   dmgMult: 1,   weight: 10, ranged: true },
+    { type: 'ghost',    name: '游魂',       minFloor: 4, hpMult: 0.6, dmgMult: 1.2, weight: 12, ranged: false },
+    { type: 'specter',  name: '鬼火',       minFloor: 5, hpMult: 0.8, dmgMult: 1.4, weight: 10, ranged: true },
+    { type: 'mummy',    name: '机关铜人',   minFloor: 6, hpMult: 1.3, dmgMult: 0.9, weight: 10, ranged: false },
+    { type: 'vampire',  name: '蛇妖',       minFloor: 7, hpMult: 1.2, dmgMult: 1.3, weight: 10, ranged: true }
   ];
 
   // 与 enemy-system.js BASE_BOSS_MAP 一致
   const BOSSES = {
-    2: { name: '血鸟', hp: 400, dmg: 30, xp: 1000 },
-    4: { name: '女伯爵', hp: 1000, dmg: 50, xp: 2000 },
-    5: { name: '屠夫', hp: 1400, dmg: 65, xp: 2500 },
-    7: { name: '树头木拳', hp: 2800, dmg: 75, xp: 3000 },
-    9: { name: '暗黑破坏神', hp: 5000, dmg: 95, xp: 5000 },
-    10: { name: '巴尔', hp: 6000, dmg: 120, xp: 8000 }
+    2: { name: '血蝠妖', hp: 400, dmg: 30, xp: 1000 },
+    4: { name: '白骨夫人', hp: 1000, dmg: 50, xp: 2000 },
+    5: { name: '铜甲尸王', hp: 1400, dmg: 65, xp: 2500 },
+    7: { name: '千年树妖', hp: 2800, dmg: 75, xp: 3000 },
+    9: { name: '九尾天狐', hp: 5000, dmg: 95, xp: 5000 },
+    10: { name: '魔蛟', hp: 6000, dmg: 120, xp: 8000 }
   };
 
   // 武学触发器：技能从“按快捷键”改为“满足条件自动出招”
@@ -162,9 +162,9 @@
     const cfg = BOSSES[((floor - 1) % 10) + 1];
     if (!cfg) return null;
     let prefix = '';
-    if (cycle === 1) prefix = '噩梦 ';
-    else if (cycle === 2) prefix = '地狱 ';
-    else if (cycle >= 3) prefix = '折磨' + (cycle - 2) + ' ';
+    if (cycle === 1) prefix = '凶·';
+    else if (cycle === 2) prefix = '厉·';
+    else if (cycle >= 3) prefix = '魔' + (cycle - 2) + '·';
     return {
       name: prefix + cfg.name, baseName: cfg.name,
       hp: Math.floor(cfg.hp * (1 + cycle * 1.5)),
@@ -204,7 +204,7 @@
   function makeWave(floor, waveIndex, rng, bossReady = true) {
     const last = waveIndex === IDLE_CONFIG.WAVES_PER_FLOOR - 1;
     if (last && isBossFloor(floor) && !bossReady) {
-      // 首领尚未刷新：最后一波改为精英小队
+      // 镇守尚未刷新：最后一波改为精英小队
       const list = [makeEnemy(floor, rng, { elite: true }), makeEnemy(floor, rng, { elite: false })];
       list.forEach((e, i) => { e.slot = i; });
       return list;
@@ -266,7 +266,7 @@
   }
 
   // ---------- 战斗模拟 ----------
-  // 一次地宫挂机会话。step() 推进固定步长并返回事件，渲染层只消费事件。
+  // 一次镇妖塔挂机会话。step() 推进固定步长并返回事件，渲染层只消费事件。
   class Run {
     constructor(heroSnapshot, opts = {}) {
       this.rng = opts.rng || createRng(opts.seed || 1);

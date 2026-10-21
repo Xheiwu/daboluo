@@ -1,4 +1,4 @@
-// ========== idle-art.js - 地宫挂机像素美术 ==========
+// ========== idle-art.js - 镇妖塔挂机像素美术 ==========
 // 16×16 像素图，复用 home-art.js 的 HOME_PALETTE 与 HomeArt 渲染/缓存（需在 home-art.js 之后加载）。
 // 每行 16 个字符，"." 为透明，其余字符对应 HOME_PALETTE 中的颜色；新增角色按同样格式追加。
 const IDLE_SPRITES = {
@@ -200,13 +200,128 @@ const IDLE_SPRITES = {
     '...kNNk..kNNk...',
     '...kkk....kkk...',
   ],
+  mob_jiangshi: [
+    '.....kkkkkk.....',
+    '....kDDDDDDk....',
+    '...kDDDrrDDDk...',
+    '..kkkkkkkkkkkk..',
+    '....kgyyyygk....',
+    '....kgyrrygk....',
+    '....kgkggkgk....',
+    '....kgggggg.k...',
+    '.kkkkbbbbbbkkkk.',
+    'kggbbbbyybbbbggk',
+    'kkkkbbbyybbbkkkk',
+    '....kbbbbbbk....',
+    '....kbbbbbbk....',
+    '....kbbkkbbk....',
+    '....kDDk.kDDk...',
+    '....kkk...kkk...',
+  ],
+  mob_paper: [
+    '................',
+    '.....kkkkkk.....',
+    '....kwwwwwwk....',
+    '...kwwwwwwwwk...',
+    '...kwkkwwkkwk...',
+    '...kPwwwwwwPk...',
+    '...kwwwrrwwwk...',
+    '....kwwwwwwk....',
+    '...kkrrrrrrkk...',
+    '..kwkrryyrrkwk..',
+    '..kwkrrrrrrkwk..',
+    '..kk.krrrrk.kk..',
+    '.....krrrrk.....',
+    '.....kwk.kwk....',
+    '.....kwk.kwk....',
+    '.....kk...kk....',
+  ],
+  mob_spider: [
+    '................',
+    '................',
+    '.k....kkkk....k.',
+    '..k..kppppk..k..',
+    '...kkppppppkk...',
+    '.kk.kpprrppk.kk.',
+    'k..kkppppppkk..k',
+    '..k.kpllllpk.k..',
+    '.k..kpppppplk.k.',
+    'k..kpppllpppk..k',
+    '..k.kpppppppk.k.',
+    '.k...kpppppk...k',
+    'k.....kkkkk.....',
+    '................',
+    '................',
+    '................',
+  ],
+  mob_fox: [
+    '..kk......kk....',
+    '.kRRk....kRRk...',
+    '.kRwRkkkkRwRk...',
+    '..kRRRRRRRRk....',
+    '..kRkyRRkyRk....',
+    '..kRRRwwRRRk....',
+    '...kRRwwRRk.....',
+    '....kkPPkk...kk.',
+    '...kPPPPPPk.kwwk',
+    '..kPkPPPPkPkkRwk',
+    '..kk.kPPPPk.kRk.',
+    '.....kPPPPkkRRk.',
+    '.....kPPPPPRRk..',
+    '.....kPk.kPkk...',
+    '.....kPk.kPk....',
+    '....kkk...kkk...',
+  ],
+  mob_snake: [
+    '................',
+    '.....kkkkk......',
+    '....keeeeek.....',
+    '...keyekeyek....',
+    '...keeeeeeek....',
+    '....kerrrek.....',
+    '.....kerek......',
+    '......keek......',
+    '.....keeek......',
+    '....keelek......',
+    '....kelek.......',
+    '.....keeekk.....',
+    '......kleeek....',
+    '..kkk..kkleek...',
+    '.keeekkkkeleek..',
+    '..kkleeeeeekk...',
+  ],
+  mob_bronze: [
+    '.....kkkkkk.....',
+    '....koooooook...',
+    '...kottttttok...',
+    '...kotkttktok...',
+    '...kotcttctok...',
+    '...kottttttok...',
+    '....kotkktok....',
+    '..kkkkooookkkk..',
+    '.kotkottttoktok.',
+    '.kotkotyytoktok.',
+    '.kok.kottok.kok.',
+    '.kk..koookk..kk.',
+    '.....kotk.ktk...',
+    '.....kotk.kotk..',
+    '....kooook.kook.',
+    '....kkkkk..kkkk.',
+  ],
 };
 
 // 怪物类型 -> 像素图
 const IDLE_MONSTER_SPRITE = {
-  melee: 'mob_melee', zombie: 'mob_zombie', ranged: 'mob_skeleton', skeleton: 'mob_skeleton',
-  shaman: 'mob_shaman', ghost: 'mob_ghost', specter: 'mob_specter', mummy: 'mob_mummy',
-  vampire: 'mob_vampire', boss: 'mob_boss'
+  melee: 'mob_melee',      // 山魈
+  zombie: 'mob_jiangshi',  // 跳尸
+  ranged: 'mob_paper',     // 纸人
+  skeleton: 'mob_spider',  // 毒蛛
+  shaman: 'mob_fox',       // 狐妖
+  ghost: 'mob_ghost',      // 游魂
+  specter: 'mob_specter',  // 鬼火
+  mummy: 'mob_bronze',     // 机关铜人
+  vampire: 'mob_snake',    // 蛇妖
+  boss: 'mob_boss'         // 镇守大妖
 };
 
 if (typeof HOME_SPRITES !== 'undefined') Object.assign(HOME_SPRITES, IDLE_SPRITES);

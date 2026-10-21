@@ -1,5 +1,5 @@
-// ========== idle-mode.js - 竖屏地宫挂机（向下推进） ==========
-// 地上是家园，地下是地宫：角色自动一层层往下打，武学按触发器自动出招，离线也能闭关收益。
+// ========== idle-mode.js - 竖屏镇妖塔挂机（向下推进） ==========
+// 地上是家园，地下是倒插地底的镇妖塔：越往下镇压的妖越强，角色自动一层层往下打，武学按触发器自动出招，离线也能闭关收益。
 // 战斗逻辑全部在 idle-core.js（纯逻辑，可在 Node 中测试）；本文件只负责：
 //   1. 把真实角色属性转成快照交给核心
 //   2. 把核心事件转换成真实奖励（经验/金币/装备/家园掉落）
@@ -48,7 +48,7 @@ const IdleMode = {
   open() {
     if (typeof IdleCore === 'undefined') return;
     if (typeof isInTown === 'function' && !isInTown()) {
-      this.notify('请先回到营地，再从营地下地宫挂机');
+      this.notify('请先回到营地，再从营地下镇妖塔挂机');
       return;
     }
     if (player.isDead) return;
@@ -62,7 +62,7 @@ const IdleMode = {
       this.view = { enemies: new Map(), fx: [], texts: [], lunge: 0, shake: 0, heroFlash: 0, banner: null };
       this.session = { kills: 0, gold: 0, xp: 0, items: 0, sold: 0, soldGold: 0, home: 0, startedAt: Date.now() };
       this.logLines = [];
-      this.log(`进入地宫第 ${s.floor} 层`, '#c8b88a');
+      this.log(`进入镇妖塔第 ${s.floor} 层 · ${this.themeFor(s.floor).name}`, '#c8b88a');
     }
     s.running = true;
     s.lastActive = Date.now();
@@ -86,7 +86,7 @@ const IdleMode = {
     const el = document.getElementById('idle-mode');
     if (el) el.classList.remove('active');
     if (this.session && this.session.kills > 0) {
-      this.notify(`地宫归来：击杀 ${this.session.kills}，金币 +${this.session.gold}，经验 +${this.session.xp}，装备 ${this.session.items} 件`);
+      this.notify(`镇妖塔归来：击杀 ${this.session.kills}，金币 +${this.session.gold}，经验 +${this.session.xp}，装备 ${this.session.items} 件`);
     }
     this.run = null;
     if (typeof updateStats === 'function') updateStats();
@@ -259,7 +259,7 @@ const IdleMode = {
       for (const f of found) { this.session.home++; this.log(f.text, '#a7f070'); }
     }
     if (typeof DailyQuestSystem !== 'undefined' && DailyQuestSystem.updateProgress) DailyQuestSystem.updateProgress('kill', 1);
-    if (e.enemy.tier === 'boss') this.log(`击败首领「${e.enemy.name}」！`, '#ff8a3d');
+    if (e.enemy.tier === 'boss') this.log(`击败镇守大妖「${e.enemy.name}」！`, '#ff8a3d');
     if (visual) {
       const ve = this.view.enemies.get(e.enemy.uid);
       if (ve) {
@@ -324,8 +324,8 @@ const IdleMode = {
       if (player.personalBest && e.floor > (player.personalBest.maxIdleFloor || 0)) player.personalBest.maxIdleFloor = e.floor;
     }
     s.floor = e.next;
-    if (e.next !== e.floor) this.log(`第 ${e.floor} 层已清空，继续向下 → 第 ${e.next} 层`, '#c8b88a');
-    if (this.view) this.view.banner = { text: `地宫 第 ${e.next} 层`, color: '#ffcd75', t: 0, life: 1.6 };
+    if (e.next !== e.floor) this.log(`第 ${e.floor} 层妖物已肃清，继续向下 → 第 ${e.next} 层`, '#c8b88a');
+    if (this.view) this.view.banner = { text: `镇妖塔 第 ${e.next} 层`, color: '#ffcd75', t: 0, life: 1.6 };
   },
 
   // 离线/后台结算结果 -> 真实奖励
@@ -366,7 +366,7 @@ const IdleMode = {
   },
 
   // ---------- 离线闭关（游戏启动时由 checkOfflineRewards 调用） ----------
-  // 返回 true 表示由地宫挂机接管离线收益，旧的离线收益不再发放，避免重复。
+  // 返回 true 表示由镇妖塔挂机接管离线收益，旧的离线收益不再发放，避免重复。
   handleOfflineReturn(lastOnlineTime) {
     if (typeof IdleCore === 'undefined' || typeof player === 'undefined') return false;
     const s = this.state();
@@ -394,7 +394,7 @@ const IdleMode = {
     el.querySelector('.idle-offline-body').innerHTML = `
       <div class="idle-offline-time">闭关 ${this.fmtDuration(res.elapsedSec)}${res.capped ? `<span class="idle-hint">（最多计算 ${IdleCore.IDLE_CONFIG.OFFLINE_MAX_HOURS} 小时）</span>` : ''}</div>
       <div class="idle-offline-grid">
-        <div>地宫</div><b>第 ${res.floor} 层</b>
+        <div>镇妖塔</div><b>第 ${res.floor} 层</b>
         <div>击杀</div><b>${res.kills.toLocaleString()}</b>
         <div>金币</div><b style="color:#ffcd75">+${(res.gold + r.soldGold).toLocaleString()}</b>
         <div>经验</div><b style="color:#a7f070">+${res.xp.toLocaleString()}</b>
@@ -495,15 +495,15 @@ const IdleMode = {
 
   themeFor(floor) {
     const themes = [
-      { max: 10, floor: ['#3a3226', '#332c21'], wall: '#241f19', brick: '#4a3f30', moss: '#38b764' },
-      { max: 20, floor: ['#26303a', '#212a33'], wall: '#171d24', brick: '#33404d', moss: '#73eff7' },
-      { max: 30, floor: ['#3a2426', '#331f21'], wall: '#241517', brick: '#4d2a2e', moss: '#ef7d57' },
-      { max: Infinity, floor: ['#2c2438', '#261f31'], wall: '#1a1524', brick: '#3b2f4d', moss: '#c8a0e0' }
+      { max: 10, name: '古墓', deco: 'tomb', floor: ['#3a3226', '#332c21'], wall: '#241f19', brick: '#4a3f30', moss: '#38b764' },
+      { max: 20, name: '溶洞水牢', deco: 'water', floor: ['#26303a', '#212a33'], wall: '#171d24', brick: '#33404d', moss: '#73eff7' },
+      { max: 30, name: '地火熔窟', deco: 'lava', floor: ['#3a2426', '#331f21'], wall: '#241517', brick: '#4d2a2e', moss: '#ef7d57' },
+      { max: Infinity, name: '九幽', deco: 'abyss', floor: ['#2c2438', '#261f31'], wall: '#1a1524', brick: '#3b2f4d', moss: '#c8a0e0' }
     ];
     return themes.find(t => floor <= t.max);
   },
 
-  // 预渲染一屏高的地宫走廊（可无缝纵向平铺）
+  // 预渲染一屏高的镇妖塔甬道（可无缝纵向平铺）
   background(floor) {
     const theme = this.themeFor(floor);
     const key = theme.max;
@@ -538,6 +538,34 @@ const IdleMode = {
       g.globalAlpha = 0.5;
       for (let y = 15; y < 200; y += 47) g.fillRect(side === 0 ? 30 : 204, y, 4, 3);
       g.globalAlpha = 1;
+      // 镇妖黄符：墙上贴的符纸（朱砂竖纹）
+      for (const y of [28, 128]) {
+        const fx = side === 0 ? 12 : 220;
+        g.fillStyle = '#d8b04a'; g.fillRect(fx, y, 7, 16);
+        g.fillStyle = '#b13e53'; g.fillRect(fx + 3, y + 2, 1, 12); g.fillRect(fx + 1, y + 5, 5, 1);
+        g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(fx, y + 15, 7, 1);
+      }
+      // 锁链：从墙头垂下
+      g.fillStyle = '#6b6b6b';
+      const cx = side === 0 ? 25 : 212;
+      for (let y = 70; y < 110; y += 4) g.fillRect(cx + ((y / 4) % 2), y, 2, 3);
+    }
+    // 分段场景点缀
+    const spots = [[62, 40], [168, 92], [96, 150], [140, 22], [70, 178]];
+    for (const [x, y] of spots) {
+      if (theme.deco === 'water') {
+        g.fillStyle = 'rgba(115,239,247,0.10)'; g.fillRect(x - 6, y, 16, 4); g.fillRect(x - 3, y - 1, 10, 6);
+        g.fillStyle = 'rgba(255,255,255,0.12)'; g.fillRect(x, y + 1, 3, 1);
+      } else if (theme.deco === 'lava') {
+        g.fillStyle = 'rgba(239,125,87,0.55)';
+        g.fillRect(x, y, 6, 1); g.fillRect(x + 5, y + 1, 1, 4); g.fillRect(x + 5, y + 4, 7, 1);
+        g.fillStyle = 'rgba(255,205,117,0.5)'; g.fillRect(x + 5, y + 2, 1, 1);
+      } else if (theme.deco === 'abyss') {
+        g.fillStyle = 'rgba(200,160,224,0.18)';
+        g.fillRect(x, y, 7, 1); g.fillRect(x + 3, y - 3, 1, 7); g.fillRect(x + 1, y - 2, 1, 1); g.fillRect(x + 5, y + 2, 1, 1);
+      } else {
+        g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(x, y, 5, 1); g.fillRect(x + 4, y + 1, 1, 3);
+      }
     }
     this.bgCache[key] = c;
     return c;
@@ -551,7 +579,7 @@ const IdleMode = {
     g.save();
     g.imageSmoothingEnabled = false;
     if (v.shake > 0) g.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 4));
-    // 地宫背景：向上滚动 = 角色向下深入
+    // 镇妖塔背景：向上滚动 = 角色向下深入
     const bg = this.background(run.floor);
     const off = Math.floor(this.scroll % 200);
     for (let y = -off; y < H; y += 200) g.drawImage(bg, 0, y);
@@ -740,7 +768,7 @@ const IdleMode = {
     wrap.innerHTML = `
       <div class="idle-shell">
         <div class="idle-top">
-          <div class="idle-title">地宫 · 第 <b id="idle-floor">1</b> 层</div>
+          <div class="idle-title">镇妖塔 · 第 <b id="idle-floor">1</b> 层</div>
           <div class="idle-sub" id="idle-sub"></div>
           <button class="idle-x" data-idle="close" title="返回营地">×</button>
         </div>
@@ -769,7 +797,7 @@ const IdleMode = {
         <div class="idle-offline-body"></div>
         <div class="idle-actions">
           <button class="idle-btn" data-idle="offline-stay">留在营地</button>
-          <button class="idle-btn idle-btn-main" data-idle="offline-resume">继续下地宫</button>
+          <button class="idle-btn idle-btn-main" data-idle="offline-resume">继续下镇妖塔</button>
         </div>
       </div>`;
     document.body.appendChild(off);
@@ -814,7 +842,7 @@ const IdleMode = {
     const $ = id => document.getElementById(id);
     $('idle-floor').textContent = run.floor;
     const bossFloor = IdleCore.isBossFloor(run.floor);
-    $('idle-sub').textContent = `最深 ${s.maxFloor} 层${bossFloor ? ' · 首领层' : ''}`;
+    $('idle-sub').textContent = `${this.themeFor(run.floor).name} · 最深 ${s.maxFloor} 层${bossFloor ? ' · 镇守层' : ''}`;
     const hpPct = Math.max(0, run.hp / run.hero.maxHp * 100);
     $('idle-hp').style.width = hpPct + '%';
     $('idle-shield').style.width = Math.min(100, run.shield / run.hero.maxHp * 100) + '%';

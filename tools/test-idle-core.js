@@ -1,4 +1,4 @@
-// 地宫挂机纯逻辑核心测试：node tools/test-idle-core.js
+// 镇妖塔挂机纯逻辑核心测试：node tools/test-idle-core.js
 const assert = require('assert');
 const path = require('path');
 const C = require(path.join(__dirname, '..', 'idle-core.js'));
@@ -71,7 +71,7 @@ test('战败退回上一层并停止深入', () => {
   assert.strictEqual(run.autoAdvance, false);
 });
 
-test('首领 5 分钟刷新一次，刷怪不能无限打首领', () => {
+test('镇守 5 分钟刷新一次，刷怪不能无限打镇守', () => {
   const run = new C.Run(hero({ damage: [900, 1000], maxHp: 5000 }), { seed: 4, floor: 2, autoAdvance: false });
   let bossKills = 0;
   for (let i = 0; i < 600 / IDLE_CONFIG.DT; i++) for (const e of run.step()) if (e.type === 'kill' && e.enemy.tier === 'boss') bossKills++;
@@ -106,4 +106,4 @@ test('越深越难：同一角色在深层会阵亡', () => {
   assert.ok(deep.stats.deaths > 0);
 });
 
-console.log(`地宫挂机核心测试全部通过（${passed} 项）`);
+console.log(`镇妖塔挂机核心测试全部通过（${passed} 项）`);

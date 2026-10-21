@@ -1,4 +1,4 @@
-/* 竖屏地宫挂机 */
+/* 竖屏镇妖塔挂机 */
 #idle-mode, #idle-offline {
     position: fixed; inset: 0; z-index: 3000; display: none;
     background: rgba(6, 5, 9, 0.92); align-items: center; justify-content: center;
