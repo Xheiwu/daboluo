@@ -4869,6 +4869,13 @@ function checkOfflineRewards() {
         return;
     }
 
+    // 地宫挂机中离线：由闭关结算接管，避免与旧离线收益重复发放
+    if (typeof IdleMode !== 'undefined' && IdleMode.handleOfflineReturn(player.lastOnlineTime)) {
+        player.lastOnlineTime = Date.now();
+        player.offlineRewardsClaimed = true;
+        return;
+    }
+
     // 计算离线收益（只使用普通楼层，不计地狱）
     const maxFloor = player.personalBest ? player.personalBest.maxFloor : (player.maxFloor || 1);
     const rewards = OfflineRewards.calculate(player.lastOnlineTime, maxFloor);
