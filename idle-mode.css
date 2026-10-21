@@ -1,0 +1,66 @@
+/* 竖屏地宫挂机 */
+#idle-mode, #idle-offline {
+    position: fixed; inset: 0; z-index: 3000; display: none;
+    background: rgba(6, 5, 9, 0.92); align-items: center; justify-content: center;
+    font-family: "Microsoft YaHei", "PingFang SC", sans-serif; color: #e8dcc0;
+}
+#idle-mode.active, #idle-offline.active { display: flex; }
+#idle-offline { z-index: 3100; background: rgba(6, 5, 9, 0.8); }
+.idle-shell {
+    width: min(100vw, 440px); height: min(100vh, 900px); height: min(100dvh, 900px);
+    display: flex; flex-direction: column; gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+    box-sizing: border-box; background: linear-gradient(180deg, #17131c, #0b0a0e);
+    border-left: 1px solid rgba(111, 90, 55, 0.5); border-right: 1px solid rgba(111, 90, 55, 0.5);
+}
+.idle-top { display: flex; align-items: baseline; gap: 10px; }
+.idle-title { font-size: 17px; color: #ffcd75; letter-spacing: 1px; }
+.idle-title b { font-size: 20px; }
+.idle-sub { flex: 1; font-size: 12px; color: #a89770; }
+.idle-x { background: none; border: 1px solid #6f5a37; color: #e8dcc0; width: 28px; height: 28px; border-radius: 4px; cursor: pointer; }
+.idle-bars { display: flex; flex-direction: column; gap: 4px; }
+.idle-bar { position: relative; height: 14px; background: #1a1c2c; border: 1px solid #333c57; border-radius: 3px; overflow: hidden; }
+.idle-bar span { position: absolute; inset: 0; font-size: 10px; line-height: 14px; text-align: center; color: #fff; text-shadow: 0 1px 1px #000; }
+.idle-hpbar .idle-fill { height: 100%; background: linear-gradient(180deg, #ef7d57, #b13e53); transition: width .12s; }
+.idle-shield { position: absolute; left: 0; top: 0; height: 100%; background: rgba(255, 210, 77, 0.45); }
+.idle-xpbar { height: 10px; }
+.idle-xpbar span { line-height: 10px; font-size: 9px; }
+.idle-xpbar .idle-fill { height: 100%; background: linear-gradient(180deg, #a7f070, #38b764); }
+.idle-waves { display: flex; gap: 4px; justify-content: center; }
+.idle-wave { width: 22px; height: 5px; border-radius: 2px; background: #333c57; }
+.idle-wave.done { background: #a89770; }
+.idle-wave.now { background: #ffcd75; box-shadow: 0 0 4px #ffcd75; }
+.idle-wave.boss { outline: 1px solid #ff8a3d; }
+.idle-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+#idle-canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 1px solid #2a2433; background: #0b0a0e; }
+.idle-skills { display: flex; gap: 6px; justify-content: center; }
+.idle-skill {
+    position: relative; flex: 1; max-width: 96px; height: 34px; border: 1px solid var(--c); border-radius: 4px;
+    background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; overflow: hidden;
+    font-size: 12px; color: var(--c);
+}
+.idle-skill-cd { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.55); }
+.idle-skill span { position: relative; }
+.idle-skill i { position: absolute; right: 3px; top: 1px; font-style: normal; font-size: 9px; color: #e8dcc0; }
+.idle-session { font-size: 11px; color: #a89770; text-align: center; }
+.idle-session b { color: #e8dcc0; font-weight: normal; }
+.idle-log { height: 78px; overflow: hidden; font-size: 11px; line-height: 13px; padding: 2px 4px; background: rgba(0, 0, 0, 0.35); border-radius: 3px; }
+.idle-log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idle-actions { display: flex; gap: 6px; }
+.idle-btn {
+    flex: 1; padding: 9px 4px; font-size: 13px; cursor: pointer; color: #f0dca0;
+    background: linear-gradient(180deg, #4a3a22, #2a2012); border: 1px solid #7a6038; border-radius: 4px;
+    font-family: inherit;
+}
+.idle-btn.on { border-color: #ffcd75; color: #ffcd75; }
+.idle-btn-main { border-color: #ffcd75; color: #ffcd75; }
+.idle-btn-home { color: #a7f070; }
+.idle-hint { font-size: 11px; color: #8f8a7a; }
+.idle-offline-card {
+    width: min(92vw, 360px); padding: 16px; background: linear-gradient(180deg, #1e1b16, #0c0c0e);
+    border: 1px solid #6f5a37; border-radius: 6px; display: flex; flex-direction: column; gap: 10px;
+}
+.idle-offline-title { font-size: 18px; color: #ffcd75; text-align: center; letter-spacing: 2px; }
+.idle-offline-time { text-align: center; font-size: 13px; }
+.idle-offline-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
+.idle-offline-grid b { text-align: right; font-weight: normal; }
+.idle-offline-home { font-size: 12px; color: #a7f070; }

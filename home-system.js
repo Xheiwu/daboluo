@@ -277,12 +277,14 @@ const HomeSystem = {
     return 'new';
   },
 
-  // 击杀钩子：由 game.js 的 finalizeEnemyDeath 调用
-  onEnemyKilled(enemy) {
-    if (typeof player === 'undefined' || !enemy || this.inTown()) return [];
+  // 击杀钩子：由 game.js 的 finalizeEnemyDeath 调用；地宫挂机传入 { depth, idle: true }，离线结算再加 silent
+  onEnemyKilled(enemy, opts = {}) {
+    if (typeof player === 'undefined' || !enemy) return [];
+    if (!opts.idle && this.inTown()) return [];
     const s = this.state();
-    const depth = this.depth();
-    const tier = enemy.isBoss ? 'boss' : (enemy.isElite ? 'elite' : 'normal');
+    const depth = Math.max(1, opts.depth || this.depth());
+    const tier = (enemy.isBoss || enemy.isQuestTarget || enemy.tier === 'boss') ? 'boss'
+      : ((enemy.isElite || enemy.rarity > 0 || enemy.tier === 'elite') ? 'elite' : 'normal');
     const found = [];
 
     if (s.activePet) this.addPetExp(s.activePet, HOME_CONFIG.PET_KILL_EXP[tier]);
@@ -318,7 +320,10 @@ const HomeSystem = {
       }
     }
 
-    if (found.length) {
+    if (found.length && opts.silent) {
+      s.stats.totalFinds += found.length;
+      this.updateBadge();
+    } else if (found.length) {
       s.stats.totalFinds += found.length;
       const best = found[found.length - 1];
       this.notify(`家园收获：${found.map(f => f.text).join('，')}`);
@@ -624,7 +629,7 @@ const HomeSystem = {
     const t = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     const dt = Math.min(0.1, Math.max(0, (t - (this.lastPetDraw || t)) / 1000));
     this.lastPetDraw = t;
-    const side = (player.facing === 'left' || player.dir === 'left' || (player.lastDx || 0) < 0) ? 1 : -1;
+    const side = String(player.direction || '').includes('left') ? 1 : -1;
     const tx = px + side * 30, ty = py + 4;
     if (!this.petPos || Math.hypot(this.petPos.x - tx, this.petPos.y - ty) > 400) this.petPos = { x: tx, y: ty };
     const k = 1 - Math.pow(0.02, dt);

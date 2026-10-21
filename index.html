@@ -36,6 +36,7 @@
     <link rel="stylesheet" href="style.css?v=2026090803">
     <link rel="stylesheet" href="skill-art.css?v=2026090602">
     <link rel="stylesheet" href="home-system.css?v=2026102101">
+    <link rel="stylesheet" href="idle-mode.css?v=2026102201">
 </head>
 
 <!-- 版本标记: v7.13 物理横扫刀锋 -->
@@ -676,6 +677,7 @@
                         class="notification-badge" id="badge-quest"></span></button>
                 <button class="sys-btn" id="btn-achievements" onclick="togglePanel('achievements')">成就</button>
                 <button class="sys-btn" id="btn-set-collection" onclick="togglePanel('set-collection')">图鉴</button>
+                <button class="sys-btn" id="btn-idle" onclick="IdleMode.toggle()">地宫</button>
                 <button class="sys-btn" id="btn-home" onclick="HomeSystem.toggle()">家园<span
                         class="notification-badge" id="badge-home"></span></button>
             </div>
@@ -785,9 +787,12 @@
     <script src="skill-branches.js?v=202609081935"></script>
     <script src="shield-3d.js?v=2026090804"></script>
     <script src="physical-3d.js?v=2026090810"></script>
-    <script src="game.js?v=2026102101"></script>
+    <script src="game.js?v=2026102201"></script>
     <script src="home-art.js?v=2026102101"></script>
-    <script src="home-system.js?v=2026102101"></script>
+    <script src="home-system.js?v=2026102201"></script>
+    <script src="idle-core.js?v=2026102201"></script>
+    <script src="idle-art.js?v=2026102201"></script>
+    <script src="idle-mode.js?v=2026102201"></script>
     <script src="skill-art.js?v=2026090602"></script>
     <script src="pocketbase.umd.js"></script>
     <script src="online.js?v=2026090812"></script>
