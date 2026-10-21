@@ -5155,6 +5155,7 @@ function startGame() {
         AudioSys.startBGM();
     }, 100);
     document.getElementById('start-screen').style.display = 'none';
+    if (typeof HomeSystem !== 'undefined') HomeSystem.onSaveLoaded(window.pendingLoadData || null);
     if (window.pendingLoadData) {
         Object.assign(player, window.pendingLoadData);
         if (!player.equipment.helm) player.equipment.helm = null;
@@ -8810,6 +8811,9 @@ function draw() {
         ctx.fillStyle = player.color; ctx.beginPath(); ctx.arc(px, py, player.radius, 0, Math.PI * 2); ctx.fill();
         drawPlayerShieldFront(ctx, px, py);
     }
+
+    // 地上家园：出战宠物跟随
+    if (typeof HomeSystem !== 'undefined') HomeSystem.drawPetFollower(ctx, px, py);
 
     // 渲染玩家头顶称号（最新优先：购买称号 vs 深渊称号）
     const displayTitle = getPlayerDisplayTitle();
@@ -12989,6 +12993,8 @@ function finalizeEnemyDeath(e, totalDamage) {
 
     // 怪物图鉴：记录发现
     discoverMonster(e);
+    // 地上家园：地下城掉落装饰物/宠物/种子/伙伴
+    if (typeof HomeSystem !== 'undefined') HomeSystem.onEnemyKilled(e);
 
     // 每日任务：击杀怪物
     if (typeof DailyQuestSystem !== 'undefined') {
@@ -14666,6 +14672,8 @@ function updateStats() {
     player.dropRatePct = getDivineBlessingEffect('dropRatePct', 0);
     // 击杀回血
     player.onKillHealPct = getDivineBlessingEffect('onKillHealPct', 0);
+    // 地上家园：宠物/装饰舒适度/料理/驻守伙伴加成
+    if (typeof HomeSystem !== 'undefined') HomeSystem.applyStatBonuses(player);
 
     // 检查套装成就
     checkSetAchievements();
