@@ -11,6 +11,8 @@
       GRID_COLS: 3, GRID_ROWS: 4, CELL_W: 7, CELL_H: 7,   // 3×4 间石室 -> 22×29 格地图
       ROOM_MIN: 4, ROOM_MAX: 6, SKIP_MIN: 1, SKIP_MAX: 3, EXTRA_LINK: 0.18,
       CHEST_CHANCE: 0.7,         // 死胡同石室出现秘藏宝箱的概率
+      MERCHANT_CHANCE: 0.25,     // 出现塔中游商的概率（4 层起）
+      TREASURE_MAP_DROP: 0.025,  // 精英掉落藏宝图的概率
       HERO_SPEED: 5,             // 每秒移动格数
       ENGAGE_DIST: 2.1           // 走到怪群多近会被缠上
     },
@@ -289,6 +291,86 @@
     return out;
   }
 
+  // ---------- 塔中异象（每张地图 0–2 条随机规则，风险越大奖励越多） ----------
+  const AFFIXES = {
+    corpse:   { name: '尸气弥漫', color: '#a7f070', scenes: ['tomb', 'lava', 'abyss'], desc: '妖物生命 +25%，材料 +40%', enemyHp: 1.25, matPct: 40 },
+    swarm:    { name: '妖群躁动', color: '#ef7d57', desc: '每群多 1 只妖物，经验 +25%', packExtra: 1, xpPct: 25 },
+    nest:     { name: '精英巢穴', color: '#5fa8ff', desc: '精英怪群 +2', eliteExtra: 2 },
+    treasure: { name: '宝气冲天', color: '#ffe14d', desc: '必有秘藏，装备掉率 +30%', chest: true, dropPct: 30 },
+    damp:     { name: '潮湿阴冷', color: '#73eff7', scenes: ['water', 'abyss'], desc: '惊雷诀伤害 +60%，烈焰掌伤害 -30%', trig: { thunder: 1.6, fireball: 0.7 } },
+    scorch:   { name: '地火灼身', color: '#ff6a3d', scenes: ['lava'], desc: '行进时不回血反掉血，烈焰掌伤害 +60%，金币 +40%', burn: 0.012, trig: { fireball: 1.6 }, goldPct: 40 },
+    gloom:    { name: '阴风惨惨', color: '#c8a0e0', desc: '灯火范围缩小，妖物伤害 +15%，装备掉率 +50%', light: 0.65, enemyDmg: 1.15, dropPct: 50 },
+    spirit:   { name: '灵气充盈', color: '#9fe0ff', desc: '武学伤害 +30%，行进回血翻倍', trig: { all: 1.3 }, heal: 2 },
+    rage:     { name: '镇守暴怒', color: '#ff8a3d', boss: true, desc: '镇守生命 +60%、伤害 +25%，镇守材料翻倍', bossHp: 1.6, bossDmg: 1.25, bossMat: 2 },
+    frenzy:   { name: '妖物狂暴', color: '#b13e53', desc: '妖物伤害 +30%，经验与金币 +35%', enemyDmg: 1.3, xpPct: 35, goldPct: 35 }
+  };
+
+  function rollAffixes(floor, rng) {
+    if (floor < 3) return [];
+    const r = rng();
+    const n = r < 0.35 ? 0 : (r < 0.85 || floor < 8) ? 1 : 2;
+    const scene = sceneFor(floor).id, boss = isBossFloor(floor);
+    const pool = Object.keys(AFFIXES).filter(id => {
+      const a = AFFIXES[id];
+      return (!a.scenes || a.scenes.includes(scene)) && (!a.boss || boss);
+    });
+    const out = [];
+    while (out.length < n && pool.length) out.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+    return out;
+  }
+
+  // 合并异象效果
+  function affixEffects(ids = []) {
+    const fx = { enemyHp: 1, enemyDmg: 1, packExtra: 0, eliteExtra: 0, chest: false, xpPct: 0, goldPct: 0, dropPct: 0, matPct: 0, burn: 0, heal: 1, light: 1, trig: {}, bossHp: 1, bossDmg: 1, bossMat: 1 };
+    for (const id of ids) {
+      const a = AFFIXES[id];
+      if (!a) continue;
+      for (const k of ['enemyHp', 'enemyDmg', 'heal', 'light', 'bossHp', 'bossDmg', 'bossMat']) if (a[k] !== undefined) fx[k] *= a[k];
+      for (const k of ['packExtra', 'eliteExtra', 'xpPct', 'goldPct', 'dropPct', 'matPct', 'burn']) if (a[k] !== undefined) fx[k] += a[k];
+      if (a.chest) fx.chest = true;
+      if (a.trig) for (const k of Object.keys(a.trig)) fx.trig[k] = (fx.trig[k] || 1) * a.trig[k];
+    }
+    return fx;
+  }
+
+  // 宿敌：击败你的妖物会记住你，在塔中游荡，每次再杀你都会变强
+  const NEMESIS_TITLES = ['噬魂', '断骨', '夺命', '不死', '血手', '裂心', '鬼面', '千面'];
+  const NEMESIS_CHANCE = 0.3;   // 每张地图出现宿敌的概率
+
+  function makeNemesis(killer, rng) {
+    return { type: killer.type, baseName: (MONSTER_BY_TYPE[killer.type] || {}).name || killer.name, title: NEMESIS_TITLES[Math.floor(rng() * NEMESIS_TITLES.length)], level: 1, kills: 1 };
+  }
+
+  function nemesisEnemy(nem, floor, rng) {
+    const e = makeEnemy(floor, rng, { type: nem.type, elite: true });
+    const lv = Math.max(1, nem.level || 1);
+    e.hp = e.maxHp = Math.floor(e.maxHp * (1.6 + lv * 0.4));
+    e.dmg = Math.floor(e.dmg * (1.15 + lv * 0.1));
+    e.xp = Math.floor(e.xp * 3);
+    e.name = `宿敌·${nem.title}${nem.baseName}`;
+    e.nemesis = true;
+    return e;
+  }
+
+  // 塔中游商：每张图 25% 概率出现（4 层起），3 笔交易
+  function makeDeals(floor, rng) {
+    const info = floorInfo(floor), unit = 10 + floor * 5;
+    const deals = [
+      { id: 'buy', give: { gold: unit * 6 }, get: { mats: { [info.mainMat]: 5 } } },
+      { id: 'swap', give: { mats: { [info.mats[Math.floor(rng() * info.mats.length)]]: 12 } }, get: { mats: { [info.sceneMat]: 1 } } },
+      { id: 'map', give: { gold: unit * 30 }, get: { treasureMaps: 1 } }
+    ];
+    const bossFloors = [];
+    for (let f = 1; f <= floor; f++) if (isBossFloor(f)) bossFloors.push(f);
+    if (bossFloors.length) {
+      const bf = bossFloors[Math.floor(rng() * bossFloors.length)];
+      deals.push({ id: 'boss', give: { gold: unit * 50 }, get: { mats: { [BOSS_MAT[bossFor(bf).baseName]]: 1 } } });
+    }
+    while (deals.length > 3) deals.splice(Math.floor(rng() * deals.length), 1);
+    deals.forEach(d => { d.sold = false; });
+    return deals;
+  }
+
   // ---------- 地图：每层一张可探索的竖版地图 ----------
   // 3×4 个格子，每格一间石室，随机去掉几格；生成树连通 + 少量回环走廊。
   // 入口在最上排，下行阶梯在最下排离入口最远的石室；镇守层的阶梯石室就是镇守殿。
@@ -296,6 +378,8 @@
   function generateMap(floor, seed, opts = {}) {
     const M = IDLE_CONFIG.MAP;
     const rng = createRng(seed);
+    const affixes = opts.affixes || rollAffixes(floor, rng);
+    const fx = affixEffects(affixes);
     const GC = M.GRID_COLS, GR = M.GRID_ROWS, CW = M.CELL_W, CH = M.CELL_H;
     const cols = GC * CW + 1, rows = GR * CH + 1;
     const tiles = new Uint8Array(cols * rows);
@@ -391,6 +475,7 @@
           enemies.push(makeEnemy(floor, rng, { elite: true }));
           count = Math.max(2, count);
         }
+        count += fx.packExtra;
         for (let i = enemies.length; i < count + (kind === 'elite' ? 1 : 0); i++) enemies.push(makeEnemy(floor, rng));
       }
       enemies.forEach((e, i) => { e.slot = i; });
@@ -414,7 +499,7 @@
       }
     }
     // 精英怪群：由一只精英带队
-    const eliteCount = Math.round((1 + (floor >= 5 ? 1 : 0)) * Math.max(0, opts.eliteMult || 1));
+    const eliteCount = Math.round((1 + (floor >= 5 ? 1 : 0)) * Math.max(0, opts.eliteMult || 1)) + fx.eliteExtra;
     const normalPacks = packs.filter(p => p.kind === 'normal');
     for (let k = 0; k < eliteCount && normalPacks.length; k++) {
       const p = normalPacks.splice(Math.floor(rng() * normalPacks.length), 1)[0];
@@ -423,14 +508,46 @@
       p.enemies.push(makeEnemy(floor, rng));
       p.enemies.forEach((e, i) => { e.slot = i; });
     }
-    // 秘藏宝箱：放在死胡同石室
+    // 秘藏宝箱：放在死胡同石室（宝气冲天时必出）
     let chest = null;
-    const dead = live.filter(r => r !== entryRoom && r !== stairsRoom && r.links.length === 1);
-    if (dead.length && rng() < M.CHEST_CHANCE) {
+    const inner = live.filter(r => r !== entryRoom && r !== stairsRoom);
+    let dead = inner.filter(r => r.links.length === 1);
+    if (!dead.length && fx.chest) dead = inner;
+    if (dead.length && (fx.chest || rng() < M.CHEST_CHANCE)) {
       const r = dead[Math.floor(rng() * dead.length)];
       chest = { x: r.x + (rng() < 0.5 ? 0.5 : r.w - 0.5), y: r.y + 0.5, room: r.id, opened: false };
     }
+    // 藏宝洞：用藏宝图后出现在离入口最远的石室，由精英把守
+    let treasure = null;
+    if (opts.treasure && inner.length) {
+      const r = inner.slice().sort((a, b) => depth.get(b.id) - depth.get(a.id))[0];
+      treasure = { x: r.x + r.w - 0.5, y: r.y + r.h - 0.5, room: r.id, opened: false };
+      makePack(r, 'elite', spot(r, r.x + r.w - 1.6, r.y + r.h - 2.2));
+      const g = packs[packs.length - 1];
+      g.enemies[0] = makeEnemy(floor, rng, { elite: true });
+      g.enemies.forEach((e, i) => { e.slot = i; });
+    }
+    // 宿敌：在某间石室游荡
+    if (opts.nemesis && inner.length) {
+      const r = inner[Math.floor(rng() * inner.length)];
+      const pack = makePack(r, 'normal', spot(r, r.x + 1 + rng() * (r.w - 2), r.y + 1 + rng() * (r.h - 2)));
+      pack.kind = 'nemesis';
+      pack.enemies = [nemesisEnemy(opts.nemesis, floor, rng), makeEnemy(floor, rng, { elite: false }), makeEnemy(floor, rng, { elite: false })];
+      pack.enemies.forEach((e, i) => { e.slot = i; });
+    }
+    // 游商
+    let merchant = null;
+    if (floor >= 4 && inner.length && rng() < M.MERCHANT_CHANCE) {
+      const r = inner[Math.floor(rng() * inner.length)];
+      merchant = { x: r.x + 0.5, y: r.y + r.h - 0.5, room: r.id, visited: false, deals: makeDeals(floor, rng) };
+    }
+    // 异象作用在妖物身上
+    for (const p of packs) for (const e of p.enemies) {
+      if (e.tier === 'boss') { e.hp = e.maxHp = Math.floor(e.maxHp * fx.bossHp); e.dmg = Math.floor(e.dmg * fx.bossDmg); }
+      else { e.hp = e.maxHp = Math.floor(e.maxHp * fx.enemyHp); e.dmg = Math.max(1, Math.floor(e.dmg * fx.enemyDmg)); }
+    }
     return {
+      affixes, fx, treasure, merchant,
       uid: mapUid++, floor, seed, cols, rows, tiles, tile: M.TILE,
       rooms: live, entry: { x: entryRoom.cx + 0.5, y: entryRoom.y + 0.5, room: entryRoom.id },
       stairs: { x: stairsRoom.cx + 0.5, y: stairsRoom.y + stairsRoom.h - 0.5, room: stairsRoom.id },
@@ -601,11 +718,14 @@
       this.charges = {};         // 每 N 次普攻类触发器的蓄力
       this.stats = {
         kills: 0, deaths: 0, xp: 0, gold: 0, drops: [0, 0, 0, 0, 0], floorsCleared: 0, damage: 0, triggers: {},
-        killsByTier: { normal: 0, elite: 0, boss: 0 }, killsByType: {}, bossKills: {}, mats: {}, packs: 0, chests: 0
+        killsByTier: { normal: 0, elite: 0, boss: 0 }, killsByType: {}, bossKills: {}, mats: {}, packs: 0, chests: 0,
+        treasureMaps: 0, treasures: 0, nemesisKills: 0
       };
       this.events = [];
       this.bossRespawn = opts.bossRespawn || {};  // floor -> 可再次出现的模拟时间
       this.facing = 1;
+      this.nemesis = opts.nemesis ? Object.assign({}, opts.nemesis) : null;
+      this.treasurePending = !!opts.treasurePending;
       this.enterFloor(this.floor);
     }
 
@@ -627,7 +747,11 @@
     enterFloor(floor) {
       this.floor = Math.max(1, floor);
       const bossReady = this.time >= (this.bossRespawn[this.floor] || 0);
-      this.map = generateMap(this.floor, Math.floor(this.rng() * 2147483647), { bossReady, eliteMult: this.mods.eliteMult });
+      const nemesis = this.nemesis && this.rng() < NEMESIS_CHANCE ? this.nemesis : null;
+      const treasure = this.treasurePending;
+      this.treasurePending = false;
+      this.map = generateMap(this.floor, Math.floor(this.rng() * 2147483647), { bossReady, eliteMult: this.mods.eliteMult, nemesis, treasure });
+      this.fx = this.map.fx;
       this.hx = this.map.entry.x;
       this.hy = this.map.entry.y;
       this.path = null;
@@ -669,6 +793,8 @@
       const { dist, prev } = distanceField(map, sx, sy);
       const goals = map.packs.filter(p => !p.cleared).map(p => ({ kind: 'pack', ref: p, x: p.x, y: p.y }));
       if (map.chest && !map.chest.opened) goals.push({ kind: 'chest', ref: map.chest, x: map.chest.x, y: map.chest.y });
+      if (map.treasure && !map.treasure.opened) goals.push({ kind: 'treasure', ref: map.treasure, x: map.treasure.x, y: map.treasure.y });
+      if (map.merchant && !map.merchant.visited) goals.push({ kind: 'merchant', ref: map.merchant, x: map.merchant.x, y: map.merchant.y });
       let best = null, bestD = Infinity;
       for (const g of goals) {
         const d = dist[Math.floor(g.y) * map.cols + Math.floor(g.x)];
@@ -688,7 +814,8 @@
     }
 
     stepWalk(dt) {
-      this.hp = Math.min(this.hero.maxHp, this.hp + this.hero.maxHp * IDLE_CONFIG.WALK_HEAL_PER_SEC * dt);
+      if (this.fx.burn > 0) this.hp = Math.max(Math.min(this.hp, this.hero.maxHp * 0.3), this.hp - this.hero.maxHp * this.fx.burn * dt);
+      else this.hp = Math.min(this.hero.maxHp, this.hp + this.hero.maxHp * IDLE_CONFIG.WALK_HEAL_PER_SEC * this.fx.heal * dt);
       if (this.phaseTimer > 0) { this.phaseTimer -= dt; return; }
       const M = IDLE_CONFIG.MAP;
       // 走近任何未清理的怪群都会被缠上
@@ -697,6 +824,14 @@
       }
       const chest = this.map.chest;
       if (chest && !chest.opened && this.distTo(chest) < 0.6) { this.openChest(); return; }
+      const tr = this.map.treasure;
+      if (tr && !tr.opened && this.distTo(tr) < 0.6) { this.openTreasure(); return; }
+      const mc = this.map.merchant;
+      if (mc && !mc.visited && this.distTo(mc) < 1.2) {
+        mc.visited = true; this.path = null; this.phaseTimer = 0.8;
+        this.emit({ type: 'merchant', floor: this.floor, deals: mc.deals });
+        return;
+      }
       if (!this.path || !this.path.length) {
         if (this.goal && this.goal.kind === 'stairs' && this.distTo(this.map.stairs) < 0.6) { this.takeStairs(); return; }
         this.planPath();
@@ -738,6 +873,31 @@
       this.phaseTimer = 0.5;
       this.emit({ type: 'chest', floor: this.floor, x: chest.x, y: chest.y, gold, drops, mats });
     }
+
+    // 藏宝洞：大量金币、装备、场景材料与一份镇守材料
+    openTreasure() {
+      const tr = this.map.treasure;
+      tr.opened = true;
+      const info = floorInfo(this.floor), mult = 1 + this.mods.matPct / 100;
+      const gold = killGold(this.floor, 'boss', this.hero, this.rng) * 5;
+      const mats = {};
+      addMat(mats, info.sceneMat, rollCount(3, mult, this.rng));
+      const bossFloors = [];
+      for (let f = 1; f <= Math.max(2, this.floor); f++) if (isBossFloor(f)) bossFloors.push(f);
+      addMat(mats, BOSS_MAT[bossFor(bossFloors[Math.floor(this.rng() * bossFloors.length)]).baseName], 1);
+      for (let i = 0; i < 3; i++) addMat(mats, info.mats[Math.floor(this.rng() * info.mats.length)], rollCount(2, mult, this.rng));
+      const dh = this.dropHero();
+      const drops = rollDrops('boss', this.floor, dh, this.pity, this.rng).concat(rollDrops('boss', this.floor, dh, this.pity, this.rng));
+      this.stats.treasures++;
+      this.stats.gold += gold;
+      for (const r of drops) this.stats.drops[r]++;
+      for (const k of Object.keys(mats)) addMat(this.stats.mats, k, mats[k]);
+      this.path = null;
+      this.phaseTimer = 0.8;
+      this.emit({ type: 'treasure', floor: this.floor, x: tr.x, y: tr.y, gold, drops, mats });
+    }
+
+    useTreasureMap() { this.treasurePending = true; }
 
     takeStairs() {
       this.stats.floorsCleared++;
@@ -850,7 +1010,7 @@
       if (!targets.length) return;
       const avg = (this.hero.dmgMin + this.hero.dmgMax) / 2;
       const enePower = 1 + this.hero.ene * 0.01;
-      const raw = (avg * def.ratio(lv) + def.flat(lv)) * enePower;
+      const raw = (avg * def.ratio(lv) + def.flat(lv)) * enePower * (this.fx.trig[t.id] || 1) * (this.fx.trig.all || 1);
       this.stats.triggers[t.id] = (this.stats.triggers[t.id] || 0) + 1;
       const hits = [];
       for (const target of targets) {
@@ -899,7 +1059,7 @@
         this.hp = Math.min(h.maxHp, this.hp + h.maxHp * IDLE_CONFIG.MEDICINE_HEAL_PCT);
         this.emit({ type: 'medicine', left: this.medicine });
       }
-      if (this.hp <= 0) this.die();
+      if (this.hp <= 0) this.die(e);
     }
 
     onKill(enemy, source) {
@@ -909,17 +1069,32 @@
       } else {
         this.stats.killsByType[enemy.type] = (this.stats.killsByType[enemy.type] || 0) + 1;
       }
-      const xp = killXp(enemy, this.floor, this.hero);
-      const gold = killGold(this.floor, enemy.tier, this.hero, this.rng);
-      const drops = rollDrops(enemy.tier, this.floor, this.dropHero(), this.pity, this.rng);
-      const mats = rollMats(enemy, this.floor, this.rng, 1 + this.mods.matPct / 100, this.sceneMult());
+      const fx = this.fx;
+      const xp = Math.floor(killXp(enemy, this.floor, this.hero) * (1 + fx.xpPct / 100));
+      let gold = Math.floor(killGold(this.floor, enemy.tier, this.hero, this.rng) * (1 + fx.goldPct / 100));
+      const matMult = 1 + (this.mods.matPct + fx.matPct) / 100;
+      let drops = rollDrops(enemy.nemesis ? 'boss' : enemy.tier, this.floor, this.dropHero(), this.pity, this.rng);
+      const mats = rollMats(enemy, this.floor, this.rng, matMult, this.sceneMult());
+      if (enemy.tier === 'boss' && fx.bossMat > 1) { const id = BOSS_MAT[enemy.baseName]; if (mats[id]) mats[id] = Math.round(mats[id] * fx.bossMat); }
+      let treasureMap = 0;
+      if (enemy.nemesis) {
+        // 宿敌伏诛：镇守级掉落 + 大量材料 + 必掉藏宝图
+        gold *= 5;
+        drops = drops.concat(rollDrops('boss', this.floor, this.dropHero(), this.pity, this.rng));
+        addMat(mats, MONSTER_MAT[enemy.type], rollCount(5, matMult, this.rng));
+        addMat(mats, floorInfo(this.floor).sceneMat, rollCount(3, matMult, this.rng));
+        treasureMap = 1;
+        this.stats.nemesisKills++;
+        this.nemesis = null;
+      } else if (enemy.tier === 'elite' && this.rng() < IDLE_CONFIG.MAP.TREASURE_MAP_DROP) treasureMap = 1;
+      this.stats.treasureMaps += treasureMap;
       this.stats.kills++;
       this.stats.killsByTier[enemy.tier]++;
       this.stats.xp += xp;
       this.stats.gold += gold;
       for (const r of drops) this.stats.drops[r]++;
       for (const k of Object.keys(mats)) addMat(this.stats.mats, k, mats[k]);
-      this.emit({ type: 'kill', enemy: { uid: enemy.uid, name: enemy.name, baseName: enemy.baseName, tier: enemy.tier, type: enemy.type }, floor: this.floor, xp, gold, drops, mats, source });
+      this.emit({ type: 'kill', enemy: { uid: enemy.uid, name: enemy.name, baseName: enemy.baseName, tier: enemy.tier, type: enemy.type, nemesis: !!enemy.nemesis }, floor: this.floor, xp, gold, drops, mats, treasureMap, source });
     }
 
     clearPack() {
@@ -934,10 +1109,18 @@
       this.path = null;
     }
 
-    die() {
+    die(killer) {
       this.hp = 0;
       this.stats.deaths++;
       const from = this.floor;
+      // 宿敌：被宿敌杀死它会变强；被普通/精英妖物杀死，它会成为新的宿敌
+      if (killer && killer.nemesis && this.nemesis) {
+        this.nemesis.level++; this.nemesis.kills++;
+        this.emit({ type: 'nemesisGrow', nemesis: Object.assign({}, this.nemesis) });
+      } else if (killer && !this.nemesis && killer.tier !== 'boss') {
+        this.nemesis = makeNemesis(killer, this.rng);
+        this.emit({ type: 'nemesisBorn', nemesis: Object.assign({}, this.nemesis), killer: killer.name });
+      }
       // 战败：退回上一层并停留刷怪，避免卡在打不过的层反复阵亡
       this.floor = Math.max(1, this.floor - 1);
       this.autoAdvance = false;
@@ -980,6 +1163,7 @@
       bossKills: scaleMap(res.stats.bossKills),
       mats: scaleMap(res.stats.mats),
       chests: scaleCount(res.stats.chests),
+      treasureMaps: scaleCount(res.stats.treasureMaps),
       deaths: res.stats.deaths,
       xp: Math.floor(res.stats.xp * scale),
       gold: Math.floor(res.stats.gold * scale),
@@ -989,7 +1173,8 @@
   }
 
   const IdleCore = {
-    IDLE_CONFIG, RARITY, MONSTERS, BOSSES, TRIGGERS, SCENES, MATERIALS, MONSTER_MAT, BOSS_MAT, RECIPES, ARTIFACTS,
+    IDLE_CONFIG, RARITY, MONSTERS, BOSSES, TRIGGERS, SCENES, MATERIALS, MONSTER_MAT, BOSS_MAT, RECIPES, ARTIFACTS, AFFIXES,
+    rollAffixes, affixEffects, makeNemesis, nemesisEnemy, makeDeals,
     createRng, buildHeroSnapshot, heroTriggers, baseStats, bossFor, isBossFloor, sceneFor, floorInfo,
     makeEnemy, xpLevelMultiplier, killGold, killXp, rollDrops, rollMats,
     generateMap, walkable, distanceField, artifactCost, canAfford, computeMods, makeBounty, bountyProgress,

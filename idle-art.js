@@ -308,6 +308,24 @@ const IDLE_SPRITES = {
     '....kooook.kook.',
     '....kkkkk..kkkk.',
   ],
+  npc_merchant: [
+    '.......kkkk.....',
+    '.....kkNNNNkk...',
+    '....kNNNNNNNNk..',
+    '...kkkkkkkkkkkk.',
+    '.....kssssk.kkk.',
+    '.....kskksk.knnk',
+    '......ksssk.knnk',
+    '..kk.kEEEEkknnnk',
+    '.kyok.kEEEEknnnk',
+    '.kook.kEtEEknnnk',
+    '..kk.kEEtEEkkkk.',
+    '..k..kEEEEEk....',
+    '..k..kEEEEEk....',
+    '.....kNNkNNk....',
+    '.....kNNkNNk....',
+    '.....kkk.kkk....',
+  ],
 };
 
 // 怪物类型 -> 像素图

@@ -103,3 +103,11 @@
 .idle-progress span { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 12px; }
 .idle-reward { font-size: 11px; color: #ffcd75; }
 .idle-bounty .idle-actions { justify-content: flex-end; }
+
+/* 里程碑 4：异象 / 宿敌 / 游商 / 藏宝图 */
+.idle-explore .idle-affix { color: var(--c); border: 1px solid var(--c); border-radius: 3px; padding: 0 4px; background: rgba(0,0,0,.35); cursor: help; }
+.idle-explore .nem { color: #ff4d4d; animation: idle-pulse 1s infinite alternate; }
+.idle-explore .idle-merchant-btn { --c: #f7a43a; padding: 0 6px; animation: idle-pulse 1s infinite alternate; }
+.idle-recipe.sold { opacity: .45; }
+.idle-recipe.idle-nemesis { border-color: rgba(255,77,77,.6); background: rgba(80,10,20,.35); }
+@keyframes idle-pulse { from { opacity: .65; } to { opacity: 1; } }

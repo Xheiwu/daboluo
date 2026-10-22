@@ -195,4 +195,54 @@ test('探索：停留本层会清完整张图、开秘藏、走阶梯后重新�
   assert.ok(Object.keys(off.mats).length > 0 && Object.keys(off.killsByType).length > 0);
 });
 
+test('塔中异象：效果叠加并作用于地图', () => {
+  assert.deepStrictEqual(C.rollAffixes(1, () => 0.9), []);
+  const fx = C.affixEffects(['corpse', 'frenzy', 'damp']);
+  assert.ok(Math.abs(fx.enemyHp - 1.25) < 1e-9 && Math.abs(fx.enemyDmg - 1.3) < 1e-9);
+  assert.strictEqual(fx.matPct, 40); assert.strictEqual(fx.xpPct, 35);
+  assert.ok(fx.trig.thunder > 1 && fx.trig.fireball < 1);
+  const plain = C.generateMap(12, 5, { affixes: [] });
+  const swarm = C.generateMap(12, 5, { affixes: ['swarm', 'treasure'] });
+  const n = m => m.packs.reduce((a, p) => a + p.enemies.length, 0);
+  assert.ok(n(swarm) > n(plain));
+  assert.ok(swarm.chest, '宝气冲天必有秘藏');
+  for (let f = 3; f < 60; f++) for (const id of C.rollAffixes(f, Math.random)) {
+    const a = C.AFFIXES[id];
+    assert.ok(!a.boss || C.isBossFloor(f));
+  }
+});
+
+test('宿敌：杀死你后诞生、再杀你会成长、击杀后掉藏宝图', () => {
+  const nem = C.makeNemesis({ type: 'zombie', name: '跳尸', tier: 'normal' }, () => 0);
+  assert.strictEqual(nem.level, 1);
+  const e1 = C.nemesisEnemy(nem, 10, () => 0.5), e3 = C.nemesisEnemy({ ...nem, level: 3 }, 10, () => 0.5);
+  assert.ok(e1.nemesis && e1.name.startsWith('宿敌·') && e3.maxHp > e1.maxHp);
+  // 弱角色在深层必然阵亡 -> 宿敌诞生
+  const weak = new C.Run(hero({ damage: [5, 8], maxHp: 120, armor: 0, skills: {} }), { seed: 4, floor: 25, autoAdvance: false });
+  let born = null;
+  for (let i = 0; i < 300 / IDLE_CONFIG.DT && !born; i++) for (const e of weak.step()) if (e.type === 'nemesisBorn') born = e;
+  assert.ok(born && weak.nemesis);
+  // 强角色带着宿敌下塔：迟早遇到并击杀
+  const strong = new C.Run(hero({ damage: [900, 1200], maxHp: 8000 }), { seed: 11, floor: 4, autoAdvance: false, nemesis: { ...nem } });
+  let killed = null;
+  for (let i = 0; i < 1500 / IDLE_CONFIG.DT && !killed; i++) for (const e of strong.step()) if (e.type === 'kill' && e.enemy.nemesis) killed = e;
+  assert.ok(killed, '遇到并击杀宿敌');
+  assert.strictEqual(killed.treasureMap, 1);
+  assert.strictEqual(strong.nemesis, null);
+});
+
+test('游商与藏宝图：交易生成、藏宝洞出现并开启', () => {
+  const deals = C.makeDeals(15, () => 0.3);
+  assert.strictEqual(deals.length, 3);
+  for (const d of deals) assert.ok((d.give.gold || d.give.mats) && (d.get.mats || d.get.treasureMaps) && d.sold === false);
+  const run = new C.Run(hero({ damage: [600, 800], maxHp: 6000 }), { seed: 8, floor: 5, autoAdvance: false });
+  run.useTreasureMap();
+  let got = null, merchants = 0;
+  for (let i = 0; i < 2000 / IDLE_CONFIG.DT && !got; i++) for (const e of run.step()) {
+    if (e.type === 'treasure') got = e;
+    if (e.type === 'merchant') merchants++;
+  }
+  assert.ok(got && got.gold > 0 && got.drops.length >= 1 && Object.keys(got.mats).length >= 2);
+});
+
 console.log(`镇妖塔挂机核心测试全部通过（${passed} 项）`);

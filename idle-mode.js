@@ -35,11 +35,12 @@ const IdleMode = {
     const d = {
       floor: 1, maxFloor: 1, autoAdvance: true, running: false, lastActive: 0, keepMin: 2, pity: { rare: 0, unique: 0 },
       totals: { kills: 0, seconds: 0, offlineClaims: 0, chests: 0, bounties: 0 },
-      mats: {}, buffs: {}, artifacts: {}, bounties: [], bountySeq: 0
+      mats: {}, buffs: {}, artifacts: {}, bounties: [], bountySeq: 0,
+      nemesis: null, treasureMaps: 0, treasurePending: false
     };
     if (!player.idle || typeof player.idle !== 'object') player.idle = d;
     const s = player.idle;
-    for (const k of Object.keys(d)) if (s[k] === undefined || s[k] === null) s[k] = d[k];
+    for (const k of Object.keys(d)) if (s[k] === undefined || (s[k] === null && d[k] !== null)) s[k] = d[k];
     s.floor = Math.max(1, Math.floor(s.floor) || 1);
     s.maxFloor = Math.max(s.floor, Math.floor(s.maxFloor) || 1);
     if (![2, 3, 4].includes(s.keepMin)) s.keepMin = 2;
@@ -71,7 +72,8 @@ const IdleMode = {
     if (!this.run) {
       this.run = new IdleCore.Run(this.snapshot(), {
         seed: (Date.now() % 2147483647) >>> 0,
-        floor: s.floor, maxFloor: s.maxFloor, autoAdvance: s.autoAdvance, pity: s.pity, mods: this.mods()
+        floor: s.floor, maxFloor: s.maxFloor, autoAdvance: s.autoAdvance, pity: s.pity, mods: this.mods(),
+        nemesis: s.nemesis, treasurePending: s.treasurePending
       });
       this.view = { enemies: new Map(), fx: [], texts: [], lunge: 0, shake: 0, heroFlash: 0, banner: null, camX: null, camY: 0, mapUid: 0, fog: null };
       this.session = { kills: 0, gold: 0, xp: 0, items: 0, sold: 0, soldGold: 0, home: 0, mats: 0, chests: 0, startedAt: Date.now() };
@@ -152,6 +154,8 @@ const IdleMode = {
     s.maxFloor = Math.max(s.maxFloor, this.run.maxFloor);
     s.autoAdvance = this.run.autoAdvance;
     s.pity = this.run.pity;
+    s.nemesis = this.run.nemesis ? Object.assign({}, this.run.nemesis) : null;
+    s.treasurePending = this.run.treasurePending;
     s.lastActive = Date.now();
     this.run.setMods(this.mods());
   },
@@ -210,11 +214,30 @@ const IdleMode = {
           if (visual) {
             this.syncEnemies();
             if (e.kind === 'boss') this.view.banner = { text: '镇守现身！', color: '#ff8a3d', t: 0, life: 1.4 };
+            else if (e.kind === 'nemesis') { this.view.banner = { text: '宿敌现身！', sub: '「又见面了……」', color: '#ff4d4d', t: 0, life: 1.8 }; this.view.shake = 0.3; }
             else if (e.kind === 'elite') this.floatText(this.heroPx().x, this.heroPx().y - 44, '精英怪群', '#9fc6ff', true);
           }
           break;
         case 'map':
           if (this.view) { this.view.enemies.clear(); this.view.mapUid = 0; }
+          this.onMap(e, visual);
+          break;
+        case 'merchant':
+          this.log('🏮 遇到塔中游商：「客官，下面凶险，带点东西防身？」点「游商」交易', '#f7a43a');
+          if (visual) this.view.banner = { text: '🏮 塔中游商', sub: '点上方「游商」看看货', color: '#f7a43a', t: 0, life: 2 };
+          break;
+        case 'treasure':
+          this.applyTreasure(e, visual);
+          break;
+        case 'nemesisBorn':
+          this.state().nemesis = Object.assign({}, e.nemesis);
+          this.log(`☠ ${e.killer} 吞了你的一缕精血，成了你的宿敌「${this.nemesisName(e.nemesis)}」！它会在塔中游荡等你`, '#ff4d4d');
+          if (visual) this.view.banner = { text: `宿敌诞生：${this.nemesisName(e.nemesis)}`, sub: '再遇到它，报仇雪恨', color: '#ff4d4d', t: 0, life: 3 };
+          break;
+        case 'nemesisGrow':
+          this.state().nemesis = Object.assign({}, e.nemesis);
+          this.log(`☠ 宿敌「${this.nemesisName(e.nemesis)}」又一次击败了你，凶性大涨（${e.nemesis.level} 阶）`, '#ff4d4d');
+          if (visual) this.view.banner = { text: `宿敌 ${this.nemesisName(e.nemesis)} 变强了`, sub: `${e.nemesis.level} 阶 · 已杀你 ${e.nemesis.kills} 次`, color: '#ff4d4d', t: 0, life: 3 };
           break;
         case 'chest':
           this.applyChest(e, visual);
@@ -294,6 +317,16 @@ const IdleMode = {
     }
     if (typeof DailyQuestSystem !== 'undefined' && DailyQuestSystem.updateProgress) DailyQuestSystem.updateProgress('kill', 1);
     if (e.enemy.tier === 'boss') this.log(`击败镇守大妖「${e.enemy.name}」！`, '#ff8a3d');
+    if (e.enemy.nemesis) {
+      s.nemesis = null;
+      s.totals.nemesisKills = (s.totals.nemesisKills || 0) + 1;
+      this.log(`⚔ 宿敌「${e.enemy.name}」伏诛！大仇得报，掉落翻倍并得到一张藏宝图`, '#ffe14d');
+      if (visual) { this.view.banner = { text: '宿敌伏诛！', sub: '大仇得报 · 获得藏宝图', color: '#ffe14d', t: 0, life: 2.6 }; this.view.shake = 0.4; }
+    }
+    if (e.treasureMap) {
+      s.treasureMaps = (s.treasureMaps || 0) + e.treasureMap;
+      if (!e.enemy.nemesis) this.log('📜 精英妖物身上掉出一张藏宝图！去「材料」里使用', '#ffe14d');
+    }
     this.addMats(e.mats);
     const delta = { mats: e.mats || {}, killsByType: {}, bossKills: {}, elites: e.enemy.tier === 'elite' ? 1 : 0 };
     if (e.enemy.tier === 'boss') delta.bossKills[e.enemy.baseName] = 1; else delta.killsByType[e.enemy.type] = 1;
@@ -310,6 +343,82 @@ const IdleMode = {
         }
       }
     }
+  },
+
+  // 新地图：异象 / 宿敌 / 藏宝洞 / 游商提示
+  onMap(e, visual) {
+    const map = e.map;
+    if (!map) return;
+    const affs = (map.affixes || []).map(id => IdleCore.AFFIXES[id]).filter(Boolean);
+    if (affs.length) this.log(`塔中异象 ${affs.map(a => `「${a.name}」`).join('')}：${affs.map(a => a.desc).join('；')}`, affs[0].color);
+    const nem = map.packs.find(p => p.kind === 'nemesis');
+    if (nem) this.log(`一股熟悉的杀气……宿敌「${nem.enemies[0].name}」就在这一层！`, '#ff4d4d');
+    if (map.treasure) this.log('📜 藏宝图指引：本层深处有一座藏宝洞，有精英把守', '#ffe14d');
+    if (map.merchant) this.log('远处传来铃铛声，似乎有游商在此歇脚', '#f7a43a');
+    if (this.panel === 'merchant') this.renderPanel();
+    if (!visual || !this.view) return;
+    const sub = [affs.map(a => a.name).join(' · '), nem ? '宿敌出没' : '', map.treasure ? '藏宝洞' : ''].filter(Boolean).join(' · ');
+    if (!sub) return;
+    const b = this.view.banner;
+    if (b && b.t < 0.6 && !b.sub) { b.sub = sub; b.subColor = nem ? '#ff4d4d' : affs.length ? affs[0].color : '#ffe14d'; b.life = Math.max(b.life, 2.6); }
+    else this.view.banner = { text: affs.length ? '塔中异象' : nem ? '宿敌出没' : '藏宝洞', sub, subColor: affs.length ? affs[0].color : '#ffe14d', color: '#ffcd75', t: 0, life: 2.4 };
+  },
+
+  nemesisName(n) { return n ? `${n.title}${n.baseName}` : ''; },
+
+  // 藏宝洞
+  applyTreasure(e, visual) {
+    const s = this.state();
+    s.totals.treasures = (s.totals.treasures || 0) + 1;
+    if (typeof addGold === 'function') addGold(e.gold); else player.gold += e.gold;
+    this.session.gold += e.gold;
+    for (const r of e.drops) this.giveItem(r, e.floor, visual);
+    this.addMats(e.mats);
+    this.progressBounties({ mats: e.mats });
+    this.log(`💰 挖开藏宝洞：金币 +${e.gold}，${this.matsText(e.mats)}，装备 ${e.drops.length} 件`, '#ffe14d');
+    if (visual) {
+      this.view.banner = { text: '藏宝洞！', sub: `金币 +${e.gold}`, color: '#ffe14d', t: 0, life: 2.2 };
+      this.view.shake = 0.25;
+      this.floatText(e.x * this.T, e.y * this.T - 24, '+' + e.gold + '金', '#ffcd75', true);
+    }
+  },
+
+  useTreasureMap() {
+    const s = this.state();
+    if (!this.run || (s.treasureMaps || 0) <= 0 || s.treasurePending) return;
+    s.treasureMaps--;
+    s.treasurePending = true;
+    this.run.useTreasureMap();
+    this.log('📜 展开藏宝图……下一张地图里会出现藏宝洞', '#ffe14d');
+    this.renderPanel();
+  },
+
+  // 游商交易
+  merchant() {
+    const m = this.run && this.run.map && this.run.map.merchant;
+    return m && m.visited ? m : null;
+  },
+
+  canDeal(d) {
+    const s = this.state();
+    if (d.give.gold && (player.gold || 0) < d.give.gold) return false;
+    if (d.give.mats && !IdleCore.canAfford(s.mats, d.give.mats)) return false;
+    return !d.sold;
+  },
+
+  trade(i) {
+    const m = this.merchant();
+    const d = m && m.deals[i];
+    if (!d || !this.canDeal(d)) return;
+    const s = this.state();
+    if (d.give.gold) { if (typeof spendGold === 'function') spendGold(d.give.gold); else player.gold -= d.give.gold; }
+    if (d.give.mats) for (const id of Object.keys(d.give.mats)) s.mats[id] -= d.give.mats[id];
+    if (d.get.mats) { this.addMats(d.get.mats); this.progressBounties({ mats: d.get.mats }); }
+    if (d.get.treasureMaps) s.treasureMaps = (s.treasureMaps || 0) + d.get.treasureMaps;
+    d.sold = true;
+    this.log(`🏮 与游商成交：得到 ${d.get.treasureMaps ? '藏宝图' : this.matsText(d.get.mats)}`, '#f7a43a');
+    if (typeof updateUI === 'function') updateUI();
+    this.renderPanel();
   },
 
   // 秘藏宝箱
@@ -518,6 +627,7 @@ const IdleMode = {
     this.addMats(res.mats);
     this.progressBounties({ mats: res.mats || {}, killsByType: res.killsByType || {}, bossKills: res.bossKills || {}, elites: (res.killsByTier || {}).elite || 0 });
     s.totals.chests += res.chests || 0;
+    s.treasureMaps = (s.treasureMaps || 0) + (res.treasureMaps || 0);
     s.totals.kills += res.kills;
     player.kills = (player.kills || 0) + res.kills;
     if (typeof updateStats === 'function') updateStats();
@@ -560,6 +670,7 @@ const IdleMode = {
         <div>装备</div><b>${r.items} 件入包${r.sold ? `，${r.sold} 件卖出` : ''}</b>
         <div>材料</div><b>${this.matsText(res.mats) || '无'}</b>
         ${res.chests ? `<div>秘藏</div><b>${res.chests} 个</b>` : ''}
+        ${res.treasureMaps ? `<div>藏宝图</div><b style="color:#ffe14d">${res.treasureMaps} 张</b>` : ''}
       </div>
       ${homeText}
       <div class="idle-hint">离线效率为在线挂机的 ${Math.round(IdleCore.IDLE_CONFIG.OFFLINE_EFF * 100)}%，离线期间停留在当前层不再深入。</div>`;
@@ -591,8 +702,8 @@ const IdleMode = {
     const pack = this.run.pack, T = this.T;
     pack.enemies.forEach((e, i) => {
       if (this.view.enemies.has(e.uid) || e.hp <= 0) return;
-      const boss = e.tier === 'boss';
-      const [ox, oy] = this.packOffset(i, pack.kind === 'boss');
+      const boss = e.tier === 'boss' || !!e.nemesis;
+      const [ox, oy] = this.packOffset(i, pack.kind === 'boss' || pack.kind === 'nemesis');
       this.view.enemies.set(e.uid, { uid: e.uid, ref: e, x: pack.x * T + ox, y: pack.y * T + 10 + oy, flash: 0, lunge: 0, dying: 0, boss });
     });
   },
@@ -847,6 +958,12 @@ const IdleMode = {
     // 秘藏宝箱
     const chest = map.chest;
     if (chest && this.seen(chest.x, chest.y)) this.drawChest(g, chest.x * T, chest.y * T + 8, chest.opened, now);
+    // 藏宝洞
+    const tr = map.treasure;
+    if (tr && this.seen(tr.x, tr.y)) this.drawTreasure(g, tr.x * T, tr.y * T + 10, tr.opened, now);
+    // 游商
+    const mc = map.merchant;
+    if (mc && this.seen(mc.x, mc.y)) this.drawMerchant(g, mc, now);
 
     // 还没惊动的怪群（看得见才画）
     const sprites = [];
@@ -854,8 +971,8 @@ const IdleMode = {
       if (p.cleared || p === run.pack || !this.seen(p.x, p.y)) continue;
       p.enemies.forEach((e, i) => {
         if (e.hp <= 0) return;
-        const [ox, oy] = this.packOffset(i, p.kind === 'boss');
-        sprites.push({ idle: true, ref: e, x: p.x * T + ox, y: p.y * T + 10 + oy, uid: e.uid, boss: e.tier === 'boss', flash: 0, lunge: 0, dying: 0 });
+        const [ox, oy] = this.packOffset(i, p.kind === 'boss' || p.kind === 'nemesis');
+        sprites.push({ idle: true, ref: e, x: p.x * T + ox, y: p.y * T + 10 + oy, uid: e.uid, boss: e.tier === 'boss' || !!e.nemesis, flash: 0, lunge: 0, dying: 0 });
       });
     }
     for (const ve of v.enemies.values()) sprites.push(ve);
@@ -892,13 +1009,15 @@ const IdleMode = {
 
     // 灯火：越深越暗，只照亮主角周围
     const sx = hp.x - camX, sy = hp.y - 14 - camY;
-    const radius = Math.max(110, 200 - run.floor * 2.5);
-    const dark = Math.min(0.82, 0.3 + run.floor * 0.012);
+    const fx = map.fx || {};
+    const radius = Math.max(110, 200 - run.floor * 2.5) * (fx.light || 1);
+    const dark = Math.min(0.88, 0.3 + run.floor * 0.012 + (fx.light < 1 ? 0.08 : 0));
     const lg = g.createRadialGradient(sx, sy, radius * 0.3, sx, sy, radius);
     lg.addColorStop(0, 'rgba(10,8,14,0)');
     lg.addColorStop(1, `rgba(10,8,14,${dark})`);
     g.fillStyle = lg;
     g.fillRect(0, 0, W, H);
+    this.drawAffixAtmos(g, map, now);
 
     this.drawMinimap(g);
 
@@ -911,6 +1030,13 @@ const IdleMode = {
       g.fillRect(0, 110, W, 22);
       g.font = 'bold 12px "Microsoft YaHei", sans-serif';
       g.textAlign = 'center';
+      if (b.sub) {
+        g.fillStyle = 'rgba(10,8,14,0.75)'; g.fillRect(0, 132, W, 16);
+        g.font = '10px "Microsoft YaHei", sans-serif';
+        g.fillStyle = b.subColor || '#d6c696';
+        g.fillText(b.sub, W / 2, 144);
+        g.font = 'bold 12px "Microsoft YaHei", sans-serif';
+      }
       g.fillStyle = b.color;
       g.fillText(b.text, W / 2, 125);
       g.globalAlpha = 1;
@@ -938,7 +1064,9 @@ const IdleMode = {
       if (v.fog[i] && map.tiles[i]) g.fillRect(ox + x * S, oy + y * S, S, S);
     }
     const dot = (x, y, c, r = 2) => { g.fillStyle = c; g.fillRect(ox + Math.floor(x * S) - 1, oy + Math.floor(y * S) - 1, r + 1, r + 1); };
-    for (const p of map.packs) if (!p.cleared && this.seen(p.x, p.y)) dot(p.x, p.y, p.kind === 'boss' ? '#ff8a3d' : p.kind === 'elite' ? '#5fa8ff' : '#b13e53');
+    for (const p of map.packs) if (!p.cleared && this.seen(p.x, p.y)) dot(p.x, p.y, p.kind === 'boss' ? '#ff8a3d' : p.kind === 'nemesis' ? '#ff4d4d' : p.kind === 'elite' ? '#5fa8ff' : '#b13e53');
+    if (map.treasure && !map.treasure.opened) dot(map.treasure.x, map.treasure.y, '#ffe14d', 3);
+    if (map.merchant && this.seen(map.merchant.x, map.merchant.y)) dot(map.merchant.x, map.merchant.y, '#f7a43a');
     if (map.chest && !map.chest.opened && this.seen(map.chest.x, map.chest.y)) dot(map.chest.x, map.chest.y, '#ffe14d');
     if (this.seen(map.stairs.x, map.stairs.y)) dot(map.stairs.x, map.stairs.y, '#a7f070');
     if (Math.floor(performance.now() / 300) % 2) dot(run.hx, run.hy, '#ffffff');
@@ -958,6 +1086,69 @@ const IdleMode = {
       const a = 0.35 + Math.sin(now * 4) * 0.25;
       g.fillStyle = `rgba(255,225,77,${a})`; g.fillRect(x - 1, y - 22 - Math.round(Math.sin(now * 4) * 2), 2, 2);
     }
+  },
+
+  // 藏宝洞：地上一个金光闪闪的大宝箱
+  drawTreasure(g, x, y, opened, now) {
+    x = Math.round(x); y = Math.round(y);
+    if (!opened) {
+      const r = 30 + Math.sin(now * 3) * 4;
+      const glow = g.createRadialGradient(x, y - 10, 3, x, y - 10, r);
+      glow.addColorStop(0, 'rgba(255,225,77,0.45)'); glow.addColorStop(1, 'rgba(255,225,77,0)');
+      g.fillStyle = glow; g.fillRect(x - r, y - 10 - r, r * 2, r * 2);
+    }
+    this.shadow(g, x, y + 1, 18);
+    g.fillStyle = '#1a1c2c'; g.fillRect(x - 16, y - 21, 32, 21);
+    g.fillStyle = '#7a4a1e'; g.fillRect(x - 15, y - 13, 30, 12);
+    g.fillStyle = '#ffcd75'; g.fillRect(x - 15, y - 13, 30, 2); g.fillRect(x - 3, y - 12, 6, 6); g.fillRect(x - 15, y - 13, 2, 12); g.fillRect(x + 13, y - 13, 2, 12);
+    if (opened) {
+      g.fillStyle = '#5a3a1e'; g.fillRect(x - 15, y - 26, 30, 6);
+    } else {
+      g.fillStyle = '#a0692f'; g.fillRect(x - 15, y - 20, 30, 7);
+      g.fillStyle = '#ffcd75'; g.fillRect(x - 15, y - 20, 30, 1);
+      for (let i = 0; i < 3; i++) {
+        const k = (now * 0.8 + i / 3) % 1;
+        g.fillStyle = `rgba(255,225,77,${1 - k})`;
+        g.fillRect(x - 10 + i * 10, Math.round(y - 24 - k * 16), 2, 2);
+      }
+    }
+    g.font = 'bold 9px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
+    g.lineWidth = 3; g.strokeStyle = '#1a1c2c'; g.strokeText(opened ? '藏宝洞（已空）' : '藏宝洞', x, y - 30);
+    g.fillStyle = opened ? '#94b0c2' : '#ffe14d'; g.fillText(opened ? '藏宝洞（已空）' : '藏宝洞', x, y - 30);
+  },
+
+  drawMerchant(g, mc, now) {
+    const x = Math.round(mc.x * this.T), y = Math.round(mc.y * this.T + 10);
+    const lamp = 0.25 + Math.sin(now * 6) * 0.06;
+    const glow = g.createRadialGradient(x - 10, y - 18, 2, x - 10, y - 18, 34);
+    glow.addColorStop(0, `rgba(247,164,58,${lamp})`); glow.addColorStop(1, 'rgba(247,164,58,0)');
+    g.fillStyle = glow; g.fillRect(x - 44, y - 52, 68, 68);
+    this.shadow(g, x, y + 1, 12);
+    this.drawSprite(g, 'npc_merchant', x, y + Math.round(Math.sin(now * 2) * 0.6), 2, 1, this.run.hx < mc.x);
+    g.font = 'bold 9px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
+    g.lineWidth = 3; g.strokeStyle = '#1a1c2c'; g.strokeText('游商', x, y - 36);
+    g.fillStyle = '#f7a43a'; g.fillText('游商', x, y - 36);
+  },
+
+  // 异象氛围：整屏淡淡的色调 + 飘散的光点
+  drawAffixAtmos(g, map, now) {
+    const affs = (map.affixes || []).map(id => IdleCore.AFFIXES[id]).filter(Boolean);
+    if (!affs.length) return;
+    affs.forEach((a, j) => {
+      const c = a.color;
+      const rgb = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)).join(',');
+      g.fillStyle = `rgba(${rgb},0.06)`;
+      g.fillRect(0, 0, this.W, this.H);
+      const up = a.burn || a.name === '灵气充盈' ? -1 : 1;
+      for (let i = 0; i < 14; i++) {
+        const seed = i * 97.13 + j * 31.7;
+        const k = ((now * (0.05 + (i % 5) * 0.012)) + (seed % 1)) % 1;
+        const px = (seed * 13.7 + Math.sin(now * 0.7 + i) * 12) % this.W;
+        const py = up < 0 ? this.H * (1 - k) : this.H * k;
+        g.fillStyle = `rgba(${rgb},${0.25 + 0.35 * Math.sin(k * Math.PI)})`;
+        g.fillRect(Math.round((px + this.W) % this.W), Math.round(py), 2, 2);
+      }
+    });
   },
 
   drawSprite(g, id, x, y, scale, alpha = 1, flip = false) {
@@ -1028,10 +1219,16 @@ const IdleMode = {
     const x = Math.round(ve.x + lx), y = Math.round(ve.y + bob + ly);
     const alpha = ve.dying > 0 ? Math.max(0, 1 - ve.dying * 2) : 1;
     this.shadow(g, ve.x, ve.y + 1, ve.boss ? 20 : 11);
+    if (e.nemesis && alpha > 0.5) {
+      const r = 26 + Math.sin(now * 5) * 3;
+      const aura = g.createRadialGradient(ve.x, ve.y - 22, 4, ve.x, ve.y - 22, r);
+      aura.addColorStop(0, 'rgba(255,60,60,0.35)'); aura.addColorStop(1, 'rgba(255,60,60,0)');
+      g.fillStyle = aura; g.fillRect(ve.x - r, ve.y - 22 - r, r * 2, r * 2);
+    }
     const jitter = ve.flash > 0 ? Math.round((Math.random() - 0.5) * 3) : 0;
     const flip = this.run && this.run.hx * this.T < ve.x;
     this.drawSprite(g, sprite, x + jitter, y, scale, alpha, flip);
-    if (e.tier === 'elite' && alpha > 0.5) {
+    if (e.tier === 'elite' && !e.nemesis && alpha > 0.5) {
       g.strokeStyle = 'rgba(95,168,255,0.8)';
       g.lineWidth = 1;
       g.strokeRect(x - 17, y - 33, 34, 34);
@@ -1041,7 +1238,7 @@ const IdleMode = {
     if (!ve.idle) {
       const bw = ve.boss ? 56 : 28;
       g.fillStyle = '#1a1c2c'; g.fillRect(x - bw / 2 - 1, top - 1, bw + 2, 5);
-      g.fillStyle = ve.boss ? '#ff8a3d' : (e.tier === 'elite' ? '#5fa8ff' : '#b13e53');
+      g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : (e.tier === 'elite' ? '#5fa8ff' : '#b13e53');
       g.fillRect(x - bw / 2, top, Math.max(0, Math.round(bw * e.hp / e.maxHp)), 3);
     }
     if (ve.boss || e.tier === 'elite') {
@@ -1049,8 +1246,8 @@ const IdleMode = {
       g.textAlign = 'center';
       g.lineWidth = 3; g.strokeStyle = '#1a1c2c';
       g.strokeText(e.name, x, top - 3);
-      g.fillStyle = ve.boss ? '#ff8a3d' : '#9fc6ff';
-      g.fillText(e.name, x, top - 3);
+      g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : '#9fc6ff';
+      g.fillText(e.nemesis ? `${e.name} ☠` : e.name, x, top - 3);
     }
   },
 
@@ -1154,6 +1351,8 @@ const IdleMode = {
       else if (a === 'craft') this.craft(arg);
       else if (a === 'upgrade') this.upgradeArtifact(arg);
       else if (a === 'claim') this.claimBounty(+arg);
+      else if (a === 'trade') this.trade(+arg);
+      else if (a === 'use-map') this.useTreasureMap();
       else if (a === 'reroll') this.rerollBounty(+arg);
       else if (a === 'advance') this.toggleAdvance();
       else if (a === 'retreat') this.retreat();
@@ -1203,11 +1402,17 @@ const IdleMode = {
     const elite = packs.filter(p => p.kind === 'elite'), boss = packs.find(p => p.kind === 'boss');
     const info = IdleCore.floorInfo(run.floor);
     const buffs = Object.keys(IdleCore.RECIPES).filter(id => (s.buffs[id] || 0) > Date.now()).map(id => IdleCore.RECIPES[id].name);
-    $('idle-explore').innerHTML = `<span>怪群 <b>${done}/${packs.length}</b></span><span>精英 <b>${elite.filter(p => p.cleared).length}/${elite.length}</b></span>`
+    const exploreHtml = `<span>怪群 <b>${done}/${packs.length}</b></span><span>精英 <b>${elite.filter(p => p.cleared).length}/${elite.length}</b></span>`
       + (boss ? `<span class="boss">镇守 <b>${boss.cleared ? '已伏诛' : '未除'}</b></span>` : (info.boss ? '<span>镇守 <b>未归</b></span>' : ''))
       + (map.chest ? `<span class="gold">秘藏 <b>${map.chest.opened ? '已开' : '?'}</b></span>` : '')
       + `<span>主妖 <b>${this.monsterName(info.main)}</b></span>`
+      + (map.packs.some(p => p.kind === 'nemesis' && !p.cleared) ? '<span class="nem">宿敌 <b>在此</b></span>' : '')
+      + (map.treasure ? `<span class="gold">藏宝洞 <b>${map.treasure.opened ? '已挖' : '?'}</b></span>` : '')
+      + (this.merchant() ? '<button class="idle-chip idle-merchant-btn" data-idle="panel" data-arg="merchant">🏮 游商</button>' : '')
+      + (map.affixes || []).map(id => { const a = IdleCore.AFFIXES[id]; return `<span class="idle-affix" style="--c:${a.color}" title="${a.desc}">${a.name}</span>`; }).join('')
       + (buffs.length ? `<span class="buff">${buffs.join(' ')}</span>` : '');
+    // 内容没变就不重写，避免按钮在点击过程中被替换掉
+    if (this._exploreHtml !== exploreHtml) { this._exploreHtml = exploreHtml; $('idle-explore').innerHTML = exploreHtml; }
     const ss = this.session;
     $('idle-session').innerHTML = `本次 击杀 <b>${ss.kills}</b> · 金币 <b>${ss.gold + ss.soldGold}</b> · 经验 <b>${ss.xp}</b> · 装备 <b>${ss.items}</b> · 材料 <b>${ss.mats}</b>${ss.home ? ` · 家园 <b>${ss.home}</b>` : ''}`;
     const ready = s.bounties.filter(b => b.done).length;
@@ -1269,11 +1474,14 @@ const IdleMode = {
     if (!el) return;
     document.querySelectorAll('.idle-tab').forEach(b => b.classList.toggle('on', b.dataset.arg === this.panel));
     if (!this.panel) { el.classList.remove('active'); el.innerHTML = ''; return; }
-    const body = this.panel === 'floors' ? this.panelFloors() : this.panel === 'mats' ? this.panelMats() : this.panelBounty();
-    const title = { floors: '塔志 · 各层妖物与掉落', mats: '材料 · 炼制 · 法器', bounty: '悬赏榜' }[this.panel];
+    const body = this.panel === 'floors' ? this.panelFloors() : this.panel === 'mats' ? this.panelMats() : this.panel === 'merchant' ? this.panelMerchant() : this.panelBounty();
+    const title = { floors: '塔志 · 各层妖物与掉落', mats: '材料 · 炼制 · 法器', bounty: '悬赏榜', merchant: '🏮 塔中游商' }[this.panel];
+    const html = `<div class="idle-panel-head"><b>${title}</b><button class="idle-x" data-idle="panel-close">×</button></div><div class="idle-panel-body">${body}</div>`;
+    if (el.classList.contains('active') && this._panelHtml === html) return;
+    this._panelHtml = html;
     const list = el.querySelector('.idle-panel-body');
     const scroll = list ? list.scrollTop : 0;
-    el.innerHTML = `<div class="idle-panel-head"><b>${title}</b><button class="idle-x" data-idle="panel-close">×</button></div><div class="idle-panel-body">${body}</div>`;
+    el.innerHTML = html;
     el.querySelector('.idle-panel-body').scrollTop = scroll;
     el.classList.add('active');
   },
@@ -1325,9 +1533,27 @@ const IdleMode = {
         <div>${cost ? Object.keys(cost).map(k => this.matChip(k, cost[k])).join('') : ''}</div></div>
         ${cost ? `<button class="idle-btn idle-btn-sm" data-idle="upgrade" data-arg="${id}" ${ok ? '' : 'disabled'}>${lv ? '升级' : '炼成'}</button>` : ''}</div>`;
     }).join('');
-    return `<div class="idle-sec">材料袋</div><div class="idle-chips">${bag}</div>
+    const maps = s.treasureMaps || 0, nem = s.nemesis;
+    const extra = `<div class="idle-recipe"><div class="idle-recipe-main"><b>📜 藏宝图 ×${maps}</b>${s.treasurePending ? ' <small class="buff">已展开，下一张地图出现藏宝洞</small>' : ''}
+        <div class="idle-hint">精英妖物与宿敌掉落，游商也有卖。使用后下一张地图深处出现有精英把守的藏宝洞（金币、多件装备、场景与镇守材料）。</div></div>
+        <button class="idle-btn idle-btn-sm" data-idle="use-map" ${maps > 0 && !s.treasurePending ? '' : 'disabled'}>使用</button></div>`
+      + (nem ? `<div class="idle-recipe idle-nemesis"><div class="idle-recipe-main"><b style="color:#ff4d4d">☠ 宿敌 · ${this.nemesisName(nem)}</b> <small>${nem.level} 阶 · 杀过你 ${nem.kills} 次</small>
+        <div class="idle-hint">在塔中游荡，每张地图约 30% 机会遇到。击杀掉落按镇守算且翻倍、金币×5、必得藏宝图；再被它杀死它会更强。</div></div></div>` : '');
+    return `<div class="idle-sec">材料袋</div><div class="idle-chips">${bag}</div>${extra}
       <div class="idle-sec">丹符（限时加成，离线也计时）</div>${recipes}
       <div class="idle-sec">法器（永久加成，需要镇守材料）</div>${arts}`;
+  },
+
+  panelMerchant() {
+    const m = this.merchant();
+    if (!m) return '<div class="idle-hint">游商已经背着货箱走远了……下次在塔里碰到再说。</div>';
+    const rows = m.deals.map((d, i) => {
+      const give = d.give.gold ? `<span style="color:#ffcd75">${d.give.gold} 金</span>` : Object.keys(d.give.mats).map(id => this.matChip(id, d.give.mats[id])).join('');
+      const get = d.get.treasureMaps ? `<span class="idle-mat g3" style="--c:#ffe14d">藏宝图 ×${d.get.treasureMaps}</span>` : Object.keys(d.get.mats).map(id => `<span class="idle-mat g${IdleCore.MATERIALS[id].grade}" style="--c:${IdleCore.MATERIALS[id].color}">${this.matName(id)} ×${d.get.mats[id]}</span>`).join('');
+      return `<div class="idle-recipe${d.sold ? ' sold' : ''}"><div class="idle-recipe-main"><div>${get}</div><div class="idle-hint">价格：${give}</div></div>
+        <button class="idle-btn idle-btn-sm" data-idle="trade" data-arg="${i}" ${this.canDeal(d) ? '' : 'disabled'}>${d.sold ? '已售' : '买下'}</button></div>`;
+    }).join('');
+    return `<div class="idle-hint">「荒山野岭的，难得碰上活人。货不多，看上就拿。」游商只在本张地图停留，离开就没了。你有 <b style="color:#ffcd75">${player.gold || 0}</b> 金。</div>${rows}`;
   },
 
   panelBounty() {
