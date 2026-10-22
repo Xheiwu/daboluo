@@ -79,7 +79,7 @@ const IdleMode = {
         floor: s.floor, maxFloor: s.maxFloor, autoAdvance: s.autoAdvance, pity: s.pity, mods: this.mods(),
         nemesis: s.nemesis, treasurePending: s.treasurePending
       });
-      this.view = { enemies: new Map(), fx: [], texts: [], lunge: 0, shake: 0, heroFlash: 0, banner: null, camX: null, camY: 0, mapUid: 0, fog: null };
+      this.view = { enemies: new Map(), fx: [], texts: [], lunge: 0, cast: 0, heroDir: 'S', lastHx: null, lastHy: null, shake: 0, heroFlash: 0, banner: null, camX: null, camY: 0, mapUid: 0, fog: null };
       this.session = { kills: 0, gold: 0, xp: 0, items: 0, sold: 0, soldGold: 0, home: 0, mats: 0, chests: 0, startedAt: Date.now() };
       this.ensureBounties();
       this.logLines = [];
@@ -718,13 +718,17 @@ const IdleMode = {
   },
 
   fxSlash(ve, crit) {
-    this.view.fx.push({ kind: 'slash', x: ve.x, y: ve.y - 14, t: 0, life: 0.18, crit });
+    const hp = this.heroPx();
+    const ang = Math.atan2(ve.y - hp.y, ve.x - hp.x);
+    this.view.fx.push({ kind: 'slash', x: ve.x, y: ve.y - 14, ang, t: 0, life: 0.18, crit });
+    this.view.fx.push({ kind: 'spark', x: ve.x + (Math.random() - 0.5) * 8, y: ve.y - 16 + (Math.random() - 0.5) * 8, t: 0.03, life: 0.22 });
   },
 
   fxTrigger(e) {
     const hp = this.heroPx();
     const hero = { x: hp.x, y: hp.y - 12 };
     this.view.texts.push({ x: hero.x, y: hero.y - 34, text: e.name + '！', color: e.color, t: 0, life: 1.1, big: true, fixed: true });
+    this.view.cast = 0.4;
     if (e.id === 'golden_bell') {
       this.view.fx.push({ kind: 'bell', t: 0, life: 0.8 });
       return;
@@ -737,11 +741,15 @@ const IdleMode = {
       this.floatText(ve.x, ve.y - 30, h.dmg, h.crit ? '#ffcd75' : e.color, h.crit);
     }
     if (e.id === 'fireball') {
-      for (const ve of targets) this.view.fx.push({ kind: 'fireball', x0: hero.x, y0: hero.y, x1: ve.x, y1: ve.y - 14, t: 0, life: 0.3 });
+      for (const ve of targets) {
+        this.view.fx.push({ kind: 'fireball', x0: hero.x, y0: hero.y, x1: ve.x, y1: ve.y - 14, t: 0, life: 0.22 });
+        this.view.fx.push({ kind: 'blast', x: ve.x, y: ve.y - 14, t: -0.2, life: 0.3 });
+      }
     } else if (e.id === 'thunder') {
       let px = hero.x, py = hero.y - 120;
       for (const ve of targets) {
         this.view.fx.push({ kind: 'lightning', x0: px, y0: py, x1: ve.x, y1: ve.y - 14, t: 0, life: 0.28, seed: Math.random() });
+        this.view.fx.push({ kind: 'spark', x: ve.x, y: ve.y - 14, t: 0, life: 0.25 });
         px = ve.x; py = ve.y - 14;
       }
       this.view.shake = 0.15;
@@ -808,6 +816,7 @@ const IdleMode = {
     v.camY += (ty - v.camY) * k;
     v.lunge = Math.max(0, v.lunge - dt * 6);
     v.heroFlash = Math.max(0, v.heroFlash - dt);
+    v.cast = Math.max(0, (v.cast || 0) - dt);
     v.shake = Math.max(0, v.shake - dt);
     for (const f of v.fx) f.t += dt;
     v.fx = v.fx.filter(f => f.t < f.life);
@@ -1128,7 +1137,9 @@ const IdleMode = {
     glow.addColorStop(0, `rgba(247,164,58,${lamp})`); glow.addColorStop(1, 'rgba(247,164,58,0)');
     g.fillStyle = glow; g.fillRect(x - 44, y - 52, 68, 68);
     this.shadow(g, x, y + 1, 12);
-    this.drawSprite(g, 'npc_merchant', x, y + Math.round(Math.sin(now * 2) * 0.6), 2, 1, this.run.hx < mc.x);
+    const mcv = this.sprite32('npc_merchant', 'idle' + (Math.floor(now * 2) % 2), 'E');
+    if (mcv) this.drawCanvas(g, mcv, x, y, 1, this.run.hx < mc.x);
+    else this.drawSprite(g, 'npc_merchant', x, y + Math.round(Math.sin(now * 2) * 0.6), 2, 1, this.run.hx < mc.x);
     g.font = 'bold 9px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
     g.lineWidth = 3; g.strokeStyle = '#1a1c2c'; g.strokeText('游商', x, y - 36);
     g.fillStyle = '#f7a43a'; g.fillText('游商', x, y - 36);
@@ -1173,125 +1184,245 @@ const IdleMode = {
     g.beginPath(); g.ellipse(x, y, w, w * 0.35, 0, 0, Math.PI * 2); g.fill();
   },
 
+  // 32×32 像素角色（idle-sprites32.js）：脚底对齐 (x, y)，可镜像、旋转
+  drawCanvas(g, cv, x, y, alpha = 1, flip = false, rot = 0) {
+    if (!cv) return null;
+    g.save(); g.globalAlpha = alpha;
+    g.translate(Math.round(x), Math.round(y));
+    if (rot) { g.translate(0, -cv.height / 2); g.rotate(rot); g.translate(0, cv.height / 2); }
+    if (flip) g.scale(-1, 1);
+    g.drawImage(cv, Math.round(-cv.width / 2), -cv.height);
+    g.restore();
+    return cv;
+  },
+
+  // 方向向量 -> 8 方向
+  dir8(dx, dy) {
+    const i = ((Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) % 8) + 8) % 8;
+    return ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][i];
+  },
+
+  sprite32(key, frame, dir = 'E') {
+    return typeof IdleSprites !== 'undefined' && IdleSprites.has(key) ? IdleSprites.frame(key, frame, dir) : null;
+  },
+
   drawHero(g, now) {
     const run = this.run, v = this.view;
     const walking = run.phase === 'walk' && run.path && run.path.length > 0;
     const { x: hx, y: hy } = this.heroPx();
     const x = Math.round(hx);
-    const bob = walking ? Math.round(Math.abs(Math.sin(now * 10)) * -2) : Math.round(Math.sin(now * 3) * 0.6);
+    // 朝向：行走看位移，战斗看怪群
+    if (v.lastHx !== null) {
+      const mdx = hx - v.lastHx, mdy = hy - v.lastHy;
+      if (Math.hypot(mdx, mdy) > 0.05) v.heroDir = this.dir8(mdx, mdy);
+    }
+    v.lastHx = hx; v.lastHy = hy;
+    if (run.phase === 'fight' && run.pack) v.heroDir = this.dir8(run.pack.x * this.T - hx, run.pack.y * this.T + 10 - hy);
+    const bob = walking ? 0 : Math.round(Math.sin(now * 3) * 0.6);
     // 攻击时向目标扑一下
     let lx = 0, ly = 0;
     if (v.lunge > 0 && run.pack) {
       const dx = run.pack.x * this.T - hx, dy = run.pack.y * this.T + 10 - hy, d = Math.hypot(dx, dy) || 1;
-      lx = dx / d * v.lunge * 8; ly = dy / d * v.lunge * 8;
+      const p = Math.sin(v.lunge * Math.PI);
+      lx = dx / d * p * 5; ly = dy / d * p * 5;
     }
     const y = Math.round(hy + bob + ly);
-    const flip = run.facing < 0;
+    const facing = /W/.test(v.heroDir) ? -1 : /E/.test(v.heroDir) ? 1 : run.facing;
+    const flip = facing < 0;
     // 宠物跟在身后
     const pet = player.home && player.home.activePet;
     if (pet) {
-      const px = x - 22 * run.facing, py = Math.round(hy - 2 + Math.sin(now * (walking ? 10 : 3)) * 2);
+      const px = x - 22 * facing, py = Math.round(hy - 2 + Math.sin(now * (walking ? 10 : 3)) * 2);
       this.shadow(g, px, hy - 1, 9);
       this.drawSprite(g, 'pet_' + pet, px, py, 2, 1, flip);
     }
-    this.shadow(g, x, hy + 1, 12);
-    const alpha = run.phase === 'dead' ? 0.45 : 1;
-    this.drawSprite(g, v.lunge > 0.3 ? 'idle_hero_atk' : 'idle_hero', x + Math.round(lx), y, 2, alpha, flip);
-    if (v.heroFlash > 0) {
-      g.fillStyle = 'rgba(239,125,87,0.35)';
-      g.fillRect(x - 16, y - 32, 32, 32);
+    this.shadow(g, x, hy + 1, 11);
+    const dead = run.phase === 'dead';
+    let fr;
+    if (dead) fr = 'hurt';
+    else if (v.lunge > 0) fr = v.lunge > 0.7 ? 'atk0' : v.lunge > 0.35 ? 'atk1' : 'atk2';
+    else if (v.cast > 0) fr = v.cast > 0.25 ? 'cast0' : 'cast1';
+    else if (v.heroFlash > 0.05) fr = 'hurt';
+    else if (walking) fr = 'walk' + (Math.floor(now * 8) % 4);
+    else fr = 'idle' + (Math.floor(now * 2) % 2);
+    const [dd, dflip] = (typeof IdleSprites !== 'undefined' && IdleSprites.DIR8[v.heroDir]) || ['S', false];
+    const cv = this.sprite32('hero', fr, dd);
+    if (cv) this.drawCanvas(g, cv, x + Math.round(lx), y, dead ? 0.55 : 1, dflip, dead ? Math.PI / 2 : 0);
+    else this.drawSprite(g, v.lunge > 0.3 ? 'idle_hero_atk' : 'idle_hero', x + Math.round(lx), y, 2, dead ? 0.45 : 1, flip);
+    // 技能：掌心聚气的像素光点
+    if (v.cast > 0 && !dead) {
+      for (let i = 0; i < 4; i++) {
+        const a = now * 9 + i * Math.PI / 2, r = 6 + (0.4 - v.cast) * 30;
+        g.fillStyle = i % 2 ? '#ffcd75' : '#f4f4f4';
+        g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y - 16 + Math.sin(a) * r * 0.6), 2, 2);
+      }
     }
     if (run.shield > 0) {
-      g.strokeStyle = 'rgba(255,210,77,0.8)';
-      g.lineWidth = 2;
-      g.beginPath(); g.arc(x, y - 16, 22 + Math.sin(now * 8), 0, Math.PI * 2); g.stroke();
+      const bf = typeof IdleSprites !== 'undefined' ? IdleSprites.fx('bell', 2) : null;
+      if (bf) this.drawCanvas(g, bf, x, y + 4, 0.35 + Math.sin(now * 6) * 0.1);
+      g.strokeStyle = 'rgba(255,210,77,0.6)';
+      g.lineWidth = 1;
+      g.beginPath(); g.arc(x, y - 14, 19 + Math.sin(now * 8), 0, Math.PI * 2); g.stroke();
     }
+  },
+
+  // 妖物种类 / 镇守名 -> 32×32 精灵
+  mobKey(e) {
+    if (e.tier === 'boss') {
+      const B = { '血蝠妖': 'boss_bat', '白骨夫人': 'boss_bone', '铜甲尸王': 'boss_corpse', '千年树妖': 'boss_tree', '九尾天狐': 'boss_fox', '魔蛟': 'boss_jiao' };
+      return B[e.baseName] || B[String(e.name || '').replace(/^.*·/, '')] || 'boss_jiao';
+    }
+    return 'mob_' + e.type;
   },
 
   drawEnemy(g, ve, now) {
     const e = ve.ref;
-    const scale = ve.boss ? 3 : 2;
-    const sprite = (typeof IDLE_MONSTER_SPRITE !== 'undefined' && IDLE_MONSTER_SPRITE[e.type]) || 'mob_melee';
-    const bob = Math.round(Math.sin(now * (ve.idle ? 2 : 4) + ve.uid) * 1.2);
+    const key = this.mobKey(e);
+    const hp = this.heroPx();
     // 近战扑向主角
     let lx = 0, ly = 0;
     if (ve.lunge > 0) {
-      const hp = this.heroPx();
       const dx = hp.x - ve.x, dy = hp.y - ve.y, d = Math.hypot(dx, dy) || 1;
-      lx = dx / d * ve.lunge * 12; ly = dy / d * ve.lunge * 12;
+      const p = Math.sin(ve.lunge * Math.PI);
+      lx = dx / d * p * 10; ly = dy / d * p * 10;
     }
-    const x = Math.round(ve.x + lx), y = Math.round(ve.y + bob + ly);
+    const x = Math.round(ve.x + lx), y = Math.round(ve.y + ly);
     const alpha = ve.dying > 0 ? Math.max(0, 1 - ve.dying * 2) : 1;
-    this.shadow(g, ve.x, ve.y + 1, ve.boss ? 20 : 11);
+    const big = e.tier === 'boss';
+    this.shadow(g, ve.x, ve.y + 1, big ? 18 : 10);
     if (e.nemesis && alpha > 0.5) {
-      const r = 26 + Math.sin(now * 5) * 3;
-      const aura = g.createRadialGradient(ve.x, ve.y - 22, 4, ve.x, ve.y - 22, r);
-      aura.addColorStop(0, 'rgba(255,60,60,0.35)'); aura.addColorStop(1, 'rgba(255,60,60,0)');
-      g.fillStyle = aura; g.fillRect(ve.x - r, ve.y - 22 - r, r * 2, r * 2);
+      const r = 24 + Math.sin(now * 5) * 3;
+      const aura = g.createRadialGradient(ve.x, ve.y - 16, 4, ve.x, ve.y - 16, r);
+      aura.addColorStop(0, 'rgba(255,60,60,0.4)'); aura.addColorStop(1, 'rgba(255,60,60,0)');
+      g.fillStyle = aura; g.fillRect(ve.x - r, ve.y - 16 - r, r * 2, r * 2);
     }
     const jitter = ve.flash > 0 ? Math.round((Math.random() - 0.5) * 3) : 0;
-    const flip = this.run && this.run.hx * this.T < ve.x;
-    this.drawSprite(g, sprite, x + jitter, y, scale, alpha, flip);
+    const flip = hp.x < ve.x;
+    let fr;
+    if (ve.dying > 0 || ve.flash > 0.04) fr = 'hurt';
+    else if (ve.lunge > 0) fr = ve.lunge > 0.5 ? 'atk0' : 'atk1';
+    else if (ve.idle) fr = 'idle' + (Math.floor(now * 2 + ve.uid * 0.37) % 2);
+    else fr = 'walk' + (Math.floor(now * 4 + ve.uid * 0.37) % 2);
+    const cv = this.sprite32(key, fr, 'E');
+    let h = 32;
+    if (cv) { this.drawCanvas(g, cv, x + jitter, y, alpha, flip); h = cv.height; }
+    else {
+      const scale = ve.boss ? 3 : 2;
+      const sprite = (typeof IDLE_MONSTER_SPRITE !== 'undefined' && IDLE_MONSTER_SPRITE[e.type]) || 'mob_melee';
+      this.drawSprite(g, sprite, x + jitter, y, scale, alpha, flip); h = 16 * scale;
+    }
     if (e.tier === 'elite' && !e.nemesis && alpha > 0.5) {
-      g.strokeStyle = 'rgba(95,168,255,0.8)';
-      g.lineWidth = 1;
-      g.strokeRect(x - 17, y - 33, 34, 34);
+      g.fillStyle = 'rgba(95,168,255,0.9)';
+      // 精英：脚下四角像素框
+      for (const [cx, cy] of [[-15, -h], [12, -h], [-15, -2], [12, -2]]) { g.fillRect(x + cx, y + cy, 3, 1); g.fillRect(x + cx + (cx < 0 ? 0 : 2), y + cy + (cy < -4 ? 0 : -2), 1, 3); }
     }
     if (ve.dying > 0) return;
-    const top = y - 16 * scale - 6;
+    const top = y - h - 4;
     if (!ve.idle) {
-      const bw = ve.boss ? 56 : 28;
+      const bw = big ? 48 : e.nemesis ? 36 : 26;
       g.fillStyle = '#1a1c2c'; g.fillRect(x - bw / 2 - 1, top - 1, bw + 2, 5);
-      g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : (e.tier === 'elite' ? '#5fa8ff' : '#b13e53');
+      g.fillStyle = e.nemesis ? '#ff4d4d' : big ? '#ff8a3d' : (e.tier === 'elite' ? '#5fa8ff' : '#b13e53');
       g.fillRect(x - bw / 2, top, Math.max(0, Math.round(bw * e.hp / e.maxHp)), 3);
     }
     if (ve.boss || e.tier === 'elite') {
       g.font = '9px "Microsoft YaHei", sans-serif';
       g.textAlign = 'center';
       g.lineWidth = 3; g.strokeStyle = '#1a1c2c';
-      g.strokeText(e.name, x, top - 3);
+      g.strokeText(e.nemesis ? `${e.name} ☠` : e.name, x, top - 3);
       g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : '#9fc6ff';
       g.fillText(e.nemesis ? `${e.name} ☠` : e.name, x, top - 3);
     }
   },
 
+  // 像素特效：k = 进度 0..1 -> 第几帧
+  fxFrame(name, k) {
+    const n = (typeof IdleSprites !== 'undefined' && IdleSprites.fxFrames[name]) || 1;
+    return Math.min(n - 1, Math.floor(k * n));
+  },
+
+  drawFxCanvas(g, cv, x, y, rot = 0, alpha = 1) {
+    if (!cv) return;
+    g.save(); g.globalAlpha = alpha;
+    g.translate(Math.round(x), Math.round(y));
+    if (rot) g.rotate(rot);
+    g.drawImage(cv, -cv.width / 2, -cv.height / 2);
+    g.restore();
+  },
+
   drawFx(g, f) {
     const k = Math.max(0, f.t) / f.life;
     if (f.t < 0) return;
+    const S = typeof IdleSprites !== 'undefined' ? IdleSprites : null;
     if (f.kind === 'slash') {
+      if (S) {
+        this.drawFxCanvas(g, S.fx('slash', this.fxFrame('slash', k), f.ang || 0), f.x, f.y);
+        if (f.crit) this.drawFxCanvas(g, S.fx('slash', this.fxFrame('slash', k), (f.ang || 0) + Math.PI), f.x, f.y, 0, 0.8);
+        return;
+      }
       g.strokeStyle = f.crit ? 'rgba(255,205,117,' + (1 - k) + ')' : 'rgba(244,244,244,' + (1 - k) + ')';
       g.lineWidth = f.crit ? 3 : 2;
       g.beginPath(); g.arc(f.x, f.y, 12 + k * 6, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+    } else if (f.kind === 'spark' && S) {
+      this.drawFxCanvas(g, S.fx('spark', this.fxFrame('spark', k)), f.x, f.y);
+    } else if (f.kind === 'blast' && S) {
+      this.drawFxCanvas(g, S.fx('blast', this.fxFrame('blast', k)), f.x, f.y);
     } else if (f.kind === 'fireball') {
-      const x = f.x0 + (f.x1 - f.x0) * Math.min(1, k * 1.4), y = f.y0 + (f.y1 - f.y0) * Math.min(1, k * 1.4);
-      const r = k < 0.7 ? 5 : 5 + (k - 0.7) * 50;
-      g.fillStyle = `rgba(239,125,87,${k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3})`;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = 'rgba(255,205,117,0.9)';
-      g.beginPath(); g.arc(x, y, r * 0.5, 0, Math.PI * 2); g.fill();
+      const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k;
+      if (S) {
+        const ang = Math.atan2(f.y1 - f.y0, f.x1 - f.x0);
+        // 拖尾火星
+        for (let i = 1; i <= 3; i++) {
+          g.fillStyle = i === 1 ? '#ef7d57' : '#b13e53';
+          g.fillRect(Math.round(x - Math.cos(ang) * i * 5), Math.round(y - Math.sin(ang) * i * 5), 3 - i + 1, 3 - i + 1);
+        }
+        this.drawFxCanvas(g, S.fx('palm', Math.floor(f.t * 20) % 2), x, y);
+        return;
+      }
+      g.fillStyle = 'rgba(239,125,87,1)';
+      g.beginPath(); g.arc(x, y, 5, 0, Math.PI * 2); g.fill();
     } else if (f.kind === 'lightning') {
-      g.strokeStyle = `rgba(115,239,247,${1 - k})`;
-      g.lineWidth = 2;
-      g.beginPath(); g.moveTo(f.x0, f.y0);
+      // 像素折线：粗青色 + 白芯，2px 方块步进
+      const pts = [[f.x0, f.y0]];
       const seg = 6;
       for (let i = 1; i <= seg; i++) {
         const tt = i / seg;
         const j = i === seg ? 0 : (Math.sin((f.seed * 100 + i) * 12.9898) * 43758.5453 % 1) * 14;
-        g.lineTo(f.x0 + (f.x1 - f.x0) * tt + j, f.y0 + (f.y1 - f.y0) * tt);
+        pts.push([f.x0 + (f.x1 - f.x0) * tt + j, f.y0 + (f.y1 - f.y0) * tt]);
       }
-      g.stroke();
-      g.strokeStyle = `rgba(244,244,244,${1 - k})`; g.lineWidth = 1; g.stroke();
+      if (k > 0.75 && Math.floor(f.t * 30) % 2) return;
+      for (let i = 0; i < seg; i++) {
+        const [ax, ay] = pts[i], [bx, by] = pts[i + 1];
+        const n = Math.ceil(Math.hypot(bx - ax, by - ay) / 2);
+        for (let s = 0; s <= n; s++) {
+          const px = Math.round(ax + (bx - ax) * s / n), py = Math.round(ay + (by - ay) * s / n);
+          g.fillStyle = '#41a6f6'; g.fillRect(px - 2, py - 1, 4, 3);
+          g.fillStyle = '#73eff7'; g.fillRect(px - 1, py - 1, 2, 3);
+          g.fillStyle = '#f4f4f4'; g.fillRect(px, py, 1, 1);
+        }
+      }
+    } else if (f.kind === 'dart' && S) {
+      const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k;
+      const ang = Math.atan2(f.y1 - f.y0, f.x1 - f.x0);
+      this.drawFxCanvas(g, S.fx('dart', Math.floor(f.t * 20) % 2), x, y, Math.round(ang / (Math.PI / 4)) * (Math.PI / 4));
     } else if (f.kind === 'dart' || f.kind === 'bolt') {
       const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k;
       const ang = Math.atan2(f.y1 - f.y0, f.x1 - f.x0);
-      g.strokeStyle = f.color || '#ffcd75';
-      g.lineWidth = 2;
-      g.beginPath(); g.moveTo(x - Math.cos(ang) * 7, y - Math.sin(ang) * 7); g.lineTo(x, y); g.stroke();
+      // 妖弹：像素光球 + 拖尾
+      for (let i = 0; i < 4; i++) {
+        g.fillStyle = i ? (f.color || '#ffcd75') : '#f4f4f4';
+        const sz = i ? 3 - (i >> 1) : 3;
+        g.fillRect(Math.round(x - Math.cos(ang) * i * 3 - sz / 2), Math.round(y - Math.sin(ang) * i * 3 - sz / 2), sz, sz);
+      }
     } else if (f.kind === 'bell') {
-      g.strokeStyle = `rgba(255,210,77,${1 - k})`;
-      g.lineWidth = 3;
       const hp = this.heroPx();
-      g.beginPath(); g.arc(hp.x, hp.y - 16, 14 + k * 30, 0, Math.PI * 2); g.stroke();
+      if (S) {
+        const fr = k < 0.25 ? 0 : k < 0.7 ? 1 : 2;
+        const drop = k < 0.25 ? Math.round((0.25 - k) * -60) : 0;
+        this.drawFxCanvas(g, S.fx('bell', fr), hp.x, hp.y - 14 + drop, 0, k < 0.7 ? 1 : (1 - k) / 0.3);
+      }
+      g.strokeStyle = `rgba(255,210,77,${1 - k})`;
+      g.lineWidth = 2;
+      g.beginPath(); g.arc(hp.x, hp.y - 14, 14 + k * 30, 0, Math.PI * 2); g.stroke();
     }
   },
 
