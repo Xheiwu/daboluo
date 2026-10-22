@@ -19,7 +19,7 @@ test('无画面跑 1000 场战斗（阶段 1 验收）', () => {
   let waves = 0, steps = 0;
   const t0 = Date.now();
   while (waves < 1000 && steps < 5e6) {
-    for (const e of run.step()) if (e.type === 'waveClear' || e.type === 'death') waves++;
+    for (const e of run.step()) if (e.type === 'packClear' || e.type === 'death') waves++;
     steps++;
   }
   assert.strictEqual(waves, 1000);
@@ -104,6 +104,95 @@ test('越深越难：同一角色在深层会阵亡', () => {
   const deep = C.simulate(hero(), { floor: 40, autoAdvance: false, seconds: 600, seed: 8 });
   assert.strictEqual(shallow.stats.deaths, 0);
   assert.ok(deep.stats.deaths > 0);
+});
+
+test('地图：500 张随机地图都连通，怪群/秘藏/阶梯都能走到', () => {
+  for (let seed = 1; seed <= 500; seed++) {
+    const floor = 1 + (seed % 40);
+    const m = C.generateMap(floor, seed);
+    const { dist } = C.distanceField(m, Math.floor(m.entry.x), Math.floor(m.entry.y));
+    const reach = p => dist[Math.floor(p.y) * m.cols + Math.floor(p.x)] >= 0;
+    assert.ok(reach(m.stairs), 'stairs ' + seed);
+    assert.ok(m.packs.length >= 5, 'packs ' + m.packs.length);
+    for (const p of m.packs) assert.ok(reach(p), 'pack ' + seed);
+    if (m.chest) assert.ok(reach(m.chest), 'chest ' + seed);
+    assert.ok(m.cols * m.tile > 240 * 2 && m.rows * m.tile > 400 * 2, '地图比屏幕大');
+    assert.strictEqual(m.packs.filter(p => p.kind === 'boss').length, C.isBossFloor(floor) ? 1 : 0);
+    assert.ok(m.packs.some(p => p.kind === 'elite'));
+  }
+});
+
+test('每层妖物固定：只出本段场景的妖，主妖占多数', () => {
+  const rng = C.createRng(11);
+  for (const floor of [1, 3, 8, 13, 24, 37]) {
+    const info = C.floorInfo(floor);
+    const count = {};
+    for (let i = 0; i < 3000; i++) { const e = C.makeEnemy(floor, rng, { elite: false }); count[e.type] = (count[e.type] || 0) + 1; }
+    for (const t of Object.keys(count)) assert.ok(info.types.includes(t), floor + ' ' + t);
+    const top = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+    assert.strictEqual(top, info.main, '主妖 ' + floor);
+  }
+  assert.deepStrictEqual(C.floorInfo(1).types, ['melee', 'zombie']);
+  assert.strictEqual(C.floorInfo(15).scene.name, '溶洞水牢');
+});
+
+test('材料：妖物掉自己的材料，镇守必掉镇守材料', () => {
+  const rng = C.createRng(5);
+  let got = {};
+  for (let i = 0; i < 2000; i++) {
+    const m = C.rollMats({ tier: 'normal', type: 'zombie' }, 3, rng);
+    for (const k of Object.keys(m)) got[k] = (got[k] || 0) + m[k];
+  }
+  assert.deepStrictEqual(Object.keys(got), ['shila']);
+  assert.ok(got.shila > 300 && got.shila < 600);
+  const boss = C.bossFor(4);
+  const bm = C.rollMats({ tier: 'boss', type: 'boss', baseName: boss.baseName }, 4, rng);
+  assert.ok(bm.baigu >= 1 && bm.guyu >= 1);
+});
+
+test('悬赏：击杀/收集/镇守进度累计并完成', () => {
+  const rng = C.createRng(3);
+  const kinds = new Set();
+  for (let i = 0; i < 200; i++) {
+    const b = C.makeBounty(12, rng, i);
+    kinds.add(b.kind);
+    assert.ok(b.floor >= 1 && b.floor <= 12 && b.need > 0 && b.reward.gold > 0);
+    const delta = { killsByType: { [b.target]: b.need }, mats: { [b.target]: b.need }, bossKills: { [b.target]: 1 }, elites: b.need };
+    C.bountyProgress(b, delta);
+    assert.ok(b.done, b.kind);
+  }
+  assert.deepStrictEqual([...kinds].sort(), ['boss', 'collect', 'elite', 'kill']);
+});
+
+test('法器与丹符：费用递增，加成叠加，过期失效', () => {
+  const c1 = C.artifactCost('bell', 1), c5 = C.artifactCost('bell', 5);
+  assert.ok(c1.shougu < c5.shougu && c1.xuefuyi >= 1 && c5.hantie > 0);
+  assert.strictEqual(C.artifactCost('bell', 11), null);
+  const m = C.computeMods({ bell: 3, mirror: 2 }, { zhenyao: 1000, yinyao: 50 }, 100);
+  assert.strictEqual(m.dmgPct, 12 + 25);
+  assert.strictEqual(m.drPct, 4);
+  assert.strictEqual(m.eliteMult, 1);
+  assert.ok(C.canAfford({ fuzhi: 6, shougu: 3 }, C.RECIPES.zhenyao.cost));
+  const more = C.generateMap(6, 9, { eliteMult: 2 }).packs.filter(p => p.kind === 'elite').length;
+  const base = C.generateMap(6, 9).packs.filter(p => p.kind === 'elite').length;
+  assert.ok(more > base);
+});
+
+test('探索：停留本层会清完整张图、开秘藏、走阶梯后重新刷新', () => {
+  const run = new C.Run(hero({ damage: [400, 500], maxHp: 3000 }), { seed: 6, floor: 3, autoAdvance: false });
+  const firstMap = run.map.uid;
+  let clears = 0, chests = 0, moved = 0, lastX = run.hx;
+  for (let i = 0; i < 400 / IDLE_CONFIG.DT; i++) {
+    for (const e of run.step()) { if (e.type === 'floorClear') { clears++; assert.strictEqual(e.next, 3); } if (e.type === 'chest') chests++; }
+    if (Math.abs(run.hx - lastX) > 0.001) moved++;
+    lastX = run.hx;
+  }
+  assert.ok(clears >= 2, 'clears ' + clears);
+  assert.ok(chests >= 1);
+  assert.ok(moved > 1000, '左右走动');
+  assert.notStrictEqual(run.map.uid, firstMap);
+  const off = C.offlineSettlement(hero(), { elapsedSec: 3600, floor: 3, seed: 2 });
+  assert.ok(Object.keys(off.mats).length > 0 && Object.keys(off.killsByType).length > 0);
 });
 
 console.log(`镇妖塔挂机核心测试全部通过（${passed} 项）`);

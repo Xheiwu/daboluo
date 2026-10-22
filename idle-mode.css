@@ -25,11 +25,6 @@
 .idle-xpbar { height: 10px; }
 .idle-xpbar span { line-height: 10px; font-size: 9px; }
 .idle-xpbar .idle-fill { height: 100%; background: linear-gradient(180deg, #a7f070, #38b764); }
-.idle-waves { display: flex; gap: 4px; justify-content: center; }
-.idle-wave { width: 22px; height: 5px; border-radius: 2px; background: #333c57; }
-.idle-wave.done { background: #a89770; }
-.idle-wave.now { background: #ffcd75; box-shadow: 0 0 4px #ffcd75; }
-.idle-wave.boss { outline: 1px solid #ff8a3d; }
 .idle-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #idle-canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 1px solid #2a2433; background: #0b0a0e; }
 .idle-skills { display: flex; gap: 6px; justify-content: center; }
@@ -64,3 +59,47 @@
 .idle-offline-grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; }
 .idle-offline-grid b { text-align: right; font-weight: normal; }
 .idle-offline-home { font-size: 12px; color: #a7f070; }
+
+/* 探索进度 */
+.idle-explore { display: flex; flex-wrap: wrap; gap: 4px 10px; justify-content: center; font-size: 11px; color: #a89770; }
+.idle-explore b { color: #e8dcc0; font-weight: normal; }
+.idle-explore .boss b { color: #ff8a3d; }
+.idle-explore .gold b { color: #ffe14d; }
+.idle-explore .buff { color: #ffcd75; }
+/* 面板 */
+.idle-stage { position: relative; }
+.idle-tabs { display: flex; gap: 6px; }
+.idle-tab { flex: 1; padding: 6px 2px; font-size: 12px; cursor: pointer; color: #e8dcc0; background: rgba(0,0,0,.4); border: 1px solid #4a3f30; border-radius: 4px; font-family: inherit; }
+.idle-tab.on { border-color: #ffcd75; color: #ffcd75; }
+.idle-tab em { font-style: normal; background: #b13e53; color: #fff; border-radius: 8px; padding: 0 5px; font-size: 10px; }
+.idle-panel { display: none; position: absolute; inset: 0; z-index: 2; background: rgba(12, 10, 14, 0.96); border: 1px solid #6f5a37; border-radius: 4px; flex-direction: column; }
+.idle-panel.active { display: flex; }
+.idle-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-bottom: 1px solid #3a3226; color: #ffcd75; font-size: 14px; }
+.idle-panel-body { flex: 1; overflow-y: auto; padding: 6px 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.idle-sec { color: #ffcd75; font-size: 12px; margin-top: 4px; border-left: 3px solid #c7a35a; padding-left: 6px; }
+.idle-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.idle-chip { font-size: 11px; padding: 2px 6px; border-radius: 10px; cursor: pointer; color: var(--c); background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.15); font-family: inherit; }
+.idle-chip.on { border-color: var(--c); box-shadow: 0 0 4px var(--c); }
+.idle-mat { display: inline-block; font-size: 11px; padding: 1px 5px; margin: 1px 3px 1px 0; border-radius: 3px; color: var(--c); background: rgba(255,255,255,.06); }
+.idle-mat.g2 { border: 1px solid rgba(255,255,255,.2); }
+.idle-mat.g3 { border: 1px solid var(--c); }
+.idle-mat.main { border: 1px solid var(--c); font-weight: bold; }
+.idle-mat.lack { color: #ef7d57; text-decoration: none; opacity: .85; }
+.idle-floor { display: flex; align-items: center; gap: 6px; padding: 5px 6px; background: rgba(255,255,255,.03); border: 1px solid #2a2433; border-radius: 4px; }
+.idle-floor.cur { border-color: #ffcd75; }
+.idle-floor.locked { opacity: .5; }
+.idle-floor-main { flex: 1; min-width: 0; }
+.idle-floor-main small { color: #a89770; }
+.idle-floor-boss { color: #ff8a3d; font-size: 11px; }
+.idle-btn-sm { flex: none; padding: 5px 8px; font-size: 12px; }
+.idle-btn:disabled { opacity: .4; cursor: default; }
+.idle-recipe { display: flex; align-items: center; gap: 6px; padding: 5px 6px; background: rgba(255,255,255,.03); border: 1px solid #2a2433; border-radius: 4px; }
+.idle-recipe-main { flex: 1; min-width: 0; }
+.idle-recipe .buff { color: #a7f070; }
+.idle-bounty { padding: 6px; background: rgba(255,255,255,.03); border: 1px solid #2a2433; border-radius: 4px; display: flex; flex-direction: column; gap: 4px; }
+.idle-bounty.done { border-color: #ffe14d; }
+.idle-progress { position: relative; height: 12px; background: #1a1c2c; border-radius: 3px; overflow: hidden; }
+.idle-progress div { height: 100%; background: linear-gradient(90deg, #c7a35a, #ffe14d); }
+.idle-progress span { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 12px; }
+.idle-reward { font-size: 11px; color: #ffcd75; }
+.idle-bounty .idle-actions { justify-content: flex-end; }
