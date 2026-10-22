@@ -1,5 +1,5 @@
 // ========== idle-art.js - 镇妖塔挂机像素美术 ==========
-// 16×16 像素图（HD 立绘加载前的兜底，以及家园宠物同风格），复用 home-art.js 的 HOME_PALETTE 与 HomeArt 渲染/缓存（需在 home-art.js 之后加载）。
+// 16×16 像素图，复用 home-art.js 的 HOME_PALETTE 与 HomeArt 渲染/缓存（需在 home-art.js 之后加载）。
 // 每行 16 个字符，"." 为透明，其余字符对应 HOME_PALETTE 中的颜色；新增角色按同样格式追加。
 const IDLE_SPRITES = {
   idle_hero: [
@@ -331,23 +331,16 @@ const IDLE_SPRITES = {
 // 怪物类型 -> 像素图
 const IDLE_MONSTER_SPRITE = {
   melee: 'mob_melee',      // 山魈
-  zombie: 'mob_jiangshi',  // 尸傀
-  ranged: 'mob_paper',     // 阴兵弓手
-  skeleton: 'mob_spider',  // 白骨卒
-  shaman: 'mob_fox',       // 魈巫
+  zombie: 'mob_jiangshi',  // 跳尸
+  ranged: 'mob_paper',     // 纸人
+  skeleton: 'mob_spider',  // 毒蛛
+  shaman: 'mob_fox',       // 狐妖
   ghost: 'mob_ghost',      // 游魂
-  specter: 'mob_specter',  // 幽冥使
-  mummy: 'mob_bronze',     // 缠尸
-  vampire: 'mob_snake',    // 血魔
+  specter: 'mob_specter',  // 鬼火
+  mummy: 'mob_bronze',     // 机关铜人
+  vampire: 'mob_snake',    // 蛇妖
   boss: 'mob_boss'         // 镇守大妖
 };
 
 if (typeof HOME_SPRITES !== 'undefined') Object.assign(HOME_SPRITES, IDLE_SPRITES);
-// ---------- HD 立绘（idle-render.js 使用） ----------
-// 道具图集 art/idle/props-data.js 由 tools/build-idle-art.py 从 environment_sprites.png 生成：名称 -> [x, y, w, h]
-const IDLE_PROPS = {"chest":[2,8,92,86],"torch":[123,2,42,92],"seal":[194,23,92,71],"portal":[290,31,92,63],"shrine":[393,2,78,92],"altar":[491,2,73,92],"skulls":[578,40,92,54],"bones":[674,35,92,59],"cage":[2,98,91,92],"banner":[106,98,75,92],"rack":[194,99,92,91],"pot":[297,98,78,92],"sack":[386,98,91,92],"barrel":[494,98,68,92],"crate":[582,98,84,92],"statue":[674,109,92,81],"well":[2,209,92,77],"candles":[98,224,92,62],"blood":[194,230,92,56],"grave":[292,194,87,92],"lamp":[401,194,61,92],"mushroom":[482,198,92,88],"rock":[578,206,92,80],"roots":[674,216,92,70],"bucket":[15,290,66,92],"wheel":[98,294,92,88],"twigs":[194,326,92,56],"ice1":[290,290,92,92],"ice2":[387,290,89,92],"ice3":[482,317,92,65],"icerock":[578,316,92,66],"bluefire":[674,293,92,89],"runestone":[2,401,92,77],"icepillar":[110,386,67,92],"icespikes":[194,406,92,72],"frostbones":[290,409,92,69],"icecrate":[386,407,92,71],"icepile":[482,428,92,50],"lavacrack":[578,431,92,47],"lavarock":[674,403,92,75],"skulls2":[2,517,92,57],"horns":[98,503,92,71],"obsidian":[196,482,88,92],"brazier":[293,482,85,92],"campfire":[386,497,92,77],"lavatile":[482,511,92,63],"runeslab":[580,482,88,92],"bone2":[674,516,92,58],"demonskull":[2,595,92,75],"redcrystal":[107,578,74,92],"debris":[194,605,92,65],"coal":[290,625,92,45]};
-// 妖物类型 -> 主游戏手绘图集（ArtSamples），镇守按名字取图
-const IDLE_MONSTER_ART = { melee: 'melee', zombie: 'zombie', ranged: 'ranged', skeleton: 'skeleton', shaman: 'shaman', ghost: 'ghost', specter: 'specter', mummy: 'mummy', vampire: 'vampire' };
-const IDLE_BOSS_ART = { '血衣罗刹': 'bloodRaven', '白骨夫人': 'countess', '铜甲尸王': 'butcher', '千年树妖': 'duriel', '赤焰魔君': 'diablo', '九幽冥王': 'baal' };
-
-if (typeof module !== 'undefined') module.exports = { IDLE_SPRITES, IDLE_MONSTER_SPRITE, IDLE_PROPS, IDLE_MONSTER_ART, IDLE_BOSS_ART };
+if (typeof module !== 'undefined') module.exports = { IDLE_SPRITES, IDLE_MONSTER_SPRITE };
