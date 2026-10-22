@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
-const source=fs.readFileSync(require('node:path').join(__dirname,'../game.js'),'utf8');
+const source=fs.readFileSync(require('node:path').join(__dirname,'../game.js'),'utf8').replace(/\r\n/g,'\n');
 const begin=source.indexOf("} else if (e.ai === 'specter') {")+"} else if (e.ai === 'specter') {".length;
-const end=source.indexOf('} else {\r\n            // 普通chase AI',begin);
+const end=source.indexOf('} else {\n            // 普通chase AI',begin);
 assert(begin>0&&end>begin);
 const scope={player:{x:100,y:100},projectiles:[],CAST_SOURCE_VFX:{enemyLightning:'lightning'},setMonsterFacingToward(){},startMonsterAttack(){scope.attacks++;},attacks:0,
  isWall:(x,y)=>x>=160||x<0||y<0||y>=400,

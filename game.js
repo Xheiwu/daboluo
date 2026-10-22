@@ -4917,6 +4917,7 @@ function init() {
         // 【重要】只有游戏真正开始后才保存，避免在首页刷新时覆盖存档
         if (!gameActive) return;
 
+        if (typeof IdleMode !== 'undefined' && IdleMode.active) IdleMode.persist();
         const now = Date.now();
         // 用 localStorage 保存关键时间戳（同步，可靠）
         if (SaveSystem.currentSlot) {
@@ -5162,7 +5163,6 @@ function startGame() {
         AudioSys.startBGM();
     }, 100);
     document.getElementById('start-screen').style.display = 'none';
-    if (typeof HomeSystem !== 'undefined') HomeSystem.onSaveLoaded(window.pendingLoadData || null);
     if (window.pendingLoadData) {
         Object.assign(player, window.pendingLoadData);
         if (!player.equipment.helm) player.equipment.helm = null;
@@ -5384,6 +5384,9 @@ function startGame() {
         initAchievements();
         player.skillTree = createDefaultSkillTree(player.skills);
     }
+
+    if (typeof HomeSystem !== 'undefined') HomeSystem.onSaveLoaded(window.pendingLoadData || null);
+    if (typeof IdleMode !== 'undefined') IdleMode.onSaveLoaded(window.pendingLoadData || null);
 
     // 同步自动拾取设置的复选框状态
     document.getElementById('chk-auto-gold').checked = player.autoPickup.gold;
@@ -7204,6 +7207,14 @@ function gameLoop(ts) {
     if (!gameActive) return;
     let dt = Math.min((ts - lastTime) / 1000, 0.1);
     lastTime = ts;
+
+    // 镇妖塔独占战斗输入与模拟，原 ARPG 留在营地；自动存档继续工作。
+    if (typeof IdleMode !== 'undefined' && IdleMode.blocksARPG()) {
+        autoSaveTimer += dt;
+        if (autoSaveTimer > GAME_CONFIG.AUTO_SAVE_INTERVAL) { SaveSystem.save(true); autoSaveTimer = 0; }
+        requestAnimationFrame(gameLoop);
+        return;
+    }
 
     // Juice 顿帧逻辑优先处理
     if (Juice.update(dt)) {
@@ -16168,6 +16179,7 @@ if (isMobileDevice) {
 }
 
 window.addEventListener('keydown', e => {
+    if (typeof IdleMode !== 'undefined' && IdleMode.blocksARPG()) return;
     // 任何键盘交互时尝试自动启动BGM
     AudioSys.tryAutoStartBGM();
 
