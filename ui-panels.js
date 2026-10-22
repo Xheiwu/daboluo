@@ -120,7 +120,7 @@ function isHoveringUI() {
   if (typeof mouse === 'undefined') return false;
   if (mouse.y > window.innerHeight - 140) return true;
   const panels = ['stats-panel', 'inventory-panel', 'skills-panel', 'shop-panel', 'menu-btns', 'quest-panel', 'achievements-panel', 'set-collection-panel', 'dialog-box',
-    'abyss-entrance-panel', 'abyss-leaderboard-panel', 'abyss-result-panel'];
+    'abyss-entrance-panel', 'abyss-leaderboard-panel', 'abyss-result-panel', 'home-panel'];
   for (let id of panels) {
     const el = document.getElementById(id);
     if (el) {
