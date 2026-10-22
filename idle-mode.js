@@ -12,11 +12,14 @@ const IdleMode = {
   H: 400,
   T: 32,            // 每格像素（与 IDLE_CONFIG.MAP.TILE 一致）
   active: false,
+  offlineVisible: false,
+  loadEpoch: 0,
   run: null,
   canvas: null,
   ctx: null,
   raf: 0,
   lastFrame: 0,
+  processedAt: 0,
   acc: 0,
   persistTimer: 0,
   uiTimer: 0,
@@ -44,7 +47,8 @@ const IdleMode = {
     s.floor = Math.max(1, Math.floor(s.floor) || 1);
     s.maxFloor = Math.max(s.floor, Math.floor(s.maxFloor) || 1);
     if (![2, 3, 4].includes(s.keepMin)) s.keepMin = 2;
-    for (const k of ['chests', 'bounties']) if (typeof s.totals[k] !== 'number') s.totals[k] = 0;
+    if (typeof s.totals !== 'object' || Array.isArray(s.totals)) s.totals = {};
+    for (const k of Object.keys(d.totals)) if (!Number.isFinite(s.totals[k]) || s.totals[k] < 0) s.totals[k] = 0;
     if (!Array.isArray(s.bounties)) s.bounties = [];
     // 曾短暂试用过的妖物新名 -> 改回原名（悬赏目标、宿敌）
     const OLD_NAME = { '血衣罗刹': '血蝠妖', '赤焰魔君': '九尾天狐', '九幽冥王': '魔蛟', '尸傀': '跳尸', '阴兵弓手': '纸人', '白骨卒': '毒蛛', '魈巫': '狐妖', '幽冥使': '鬼火', '缠尸': '机关铜人', '血魔': '蛇妖' };
@@ -52,6 +56,30 @@ const IdleMode = {
     if (s.nemesis && OLD_NAME[s.nemesis.baseName]) s.nemesis.baseName = OLD_NAME[s.nemesis.baseName];
     return s;
   },
+
+  // 读档时清理运行态；旧角色没有 idle 字段时必须使用独立默认值。
+  onSaveLoaded(data) {
+    this.loadEpoch++;
+    cancelAnimationFrame(this.raf);
+    this.active = false;
+    this.processedAt = 0;
+    this.offlineVisible = false;
+    this.run = this.view = this.session = null;
+    this.panel = null;
+    this.persistTimer = this.uiTimer = this.panelTimer = this.acc = 0;
+    this.logLines = [];
+    this.bgCache = {};
+    if (typeof document !== 'undefined') {
+      for (const id of ['idle-mode', 'idle-offline']) {
+        const el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      }
+    }
+    player.idle = data && data.idle && typeof data.idle === 'object' ? data.idle : null;
+    this.state();
+  },
+
+  blocksARPG() { return this.active || this.offlineVisible; },
 
   snapshot() {
     return IdleCore.buildHeroSnapshot(player);
@@ -87,7 +115,11 @@ const IdleMode = {
     }
     s.running = true;
     s.lastActive = Date.now();
+    this.processedAt = s.lastActive;
     this.active = true;
+    // 清除打开界面前尚未松开的移动/攻击输入。
+    if (typeof mouse !== 'undefined') mouse.leftDown = mouse.leftClick = mouse.rightDown = false;
+    player.targetX = player.targetY = player.targetItem = null;
     document.getElementById('idle-mode').classList.add('active');
     this.resize();
     this.lastFrame = performance.now();
@@ -95,6 +127,7 @@ const IdleMode = {
     cancelAnimationFrame(this.raf);
     this.raf = requestAnimationFrame(t => this.frame(t));
     this.renderUI(true);
+    if (typeof SaveSystem !== 'undefined' && SaveSystem.save) SaveSystem.save(true);
   },
 
   // 返回营地：结束挂机
@@ -160,7 +193,8 @@ const IdleMode = {
     s.pity = this.run.pity;
     s.nemesis = this.run.nemesis ? Object.assign({}, this.run.nemesis) : null;
     s.treasurePending = this.run.treasurePending;
-    s.lastActive = Date.now();
+    // 标签页隐藏时仍可能保存，不能把未补算的后台时间抹掉。
+    s.lastActive = this.processedAt || Date.now();
     this.run.setMods(this.mods());
   },
 
@@ -181,6 +215,7 @@ const IdleMode = {
       this.acc -= DT;
       this.handleEvents(this.run.step(DT), true);
     }
+    this.processedAt = Date.now();
     this.state().totals.seconds += dt;
     this.updateView(dt);
     this.draw();
@@ -205,6 +240,8 @@ const IdleMode = {
         this.log(`后台闭关 ${this.fmtDuration(res.effectiveSec)}：金币 +${res.gold}，经验 +${res.xp}，装备 ${r.items} 件`, '#ffcd75');
       }
     }
+    this.processedAt = Date.now();
+    this.state().totals.seconds += seconds;
     this.view.enemies.clear();
     this.syncEnemies();
   },
@@ -627,7 +664,11 @@ const IdleMode = {
         for (let i = 0; i < n; i++) homeFinds = homeFinds.concat(HomeSystem.onEnemyKilled({ tier }, { depth: level, idle: true, silent: true }));
       }
     }
-    if (res.pity) s.pity = res.pity;
+    if (res.pity) {
+      s.pity = res.pity;
+      // 后台补算后，下一次 persist 不能再用补算前的保底覆盖结果。
+      if (this.run) this.run.pity = res.pity;
+    }
     this.addMats(res.mats);
     this.progressBounties({ mats: res.mats || {}, killsByType: res.killsByType || {}, bossKills: res.bossKills || {}, elites: (res.killsByTier || {}).elite || 0 });
     s.totals.chests += res.chests || 0;
@@ -648,21 +689,24 @@ const IdleMode = {
     const elapsedSec = Math.max(0, (Date.now() - since) / 1000);
     const res = IdleCore.offlineSettlement(this.snapshot(), { elapsedSec, floor: s.floor, pity: s.pity, seed: Date.now() % 100000, mods: this.mods() });
     s.running = false;
+    const epoch = this.loadEpoch;
     if (!res) {
-      setTimeout(() => this.open(), 600);
+      setTimeout(() => { if (epoch === this.loadEpoch) this.open(); }, 600);
       return true;
     }
-    setTimeout(() => this.showOfflinePanel(res), 800);
+    // 奖励与已结算标记同步落入当前角色，再延迟显示 UI，避免切槽串奖/刷新丢奖。
+    const r = this.applySettlement(res);
+    s.totals.offlineClaims++;
+    s.lastActive = Date.now();
+    this.offlineVisible = true;
+    if (typeof SaveSystem !== 'undefined' && SaveSystem.save) SaveSystem.save(true);
+    setTimeout(() => { if (epoch === this.loadEpoch) this.showOfflinePanel(res, r); }, 800);
     return true;
   },
 
-  showOfflinePanel(res) {
+  showOfflinePanel(res, r) {
     this.ensureDom();
     const el = document.getElementById('idle-offline');
-    const r = this.applySettlement(res);
-    const s = this.state();
-    s.totals.offlineClaims++;
-    s.lastActive = Date.now();
     const homeText = r.homeFinds.length ? r.homeFinds.slice(0, 6).map(f => `<div class="idle-offline-home">${f.text}</div>`).join('') + (r.homeFinds.length > 6 ? `<div class="idle-hint">……共 ${r.homeFinds.length} 件家园收获</div>` : '') : '';
     el.querySelector('.idle-offline-body').innerHTML = `
       <div class="idle-offline-time">闭关 ${this.fmtDuration(res.elapsedSec)}${res.capped ? `<span class="idle-hint">（最多计算 ${IdleCore.IDLE_CONFIG.OFFLINE_MAX_HOURS} 小时）</span>` : ''}</div>
@@ -685,6 +729,7 @@ const IdleMode = {
   closeOffline(resume) {
     const el = document.getElementById('idle-offline');
     if (el) el.classList.remove('active');
+    this.offlineVisible = false;
     if (resume) this.open();
   },
 

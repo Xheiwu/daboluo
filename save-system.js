@@ -203,6 +203,8 @@ const SaveSystem = {
   // 保存到当前槽位
   save: function (silent = false) {
     if (!db) return Promise.resolve(false);
+    // 快照与奖励使用同一时刻的镇妖塔进度，避免重开重复结算最近几秒。
+    if (typeof IdleMode !== 'undefined' && IdleMode.active) IdleMode.persist();
     const clean = i => { if (!i) return null; const { el, ...r } = i; return r; };
     const eq = {}; for (let k in player.equipment) eq[k] = clean(player.equipment[k]);
 
