@@ -1,6 +1,6 @@
 // ========== idle-render.js - 镇妖塔 HD-2D 渲染 ==========
 // 「像素立绘 + 现代光影」：
-//   · 角色/妖物/镇守/游商复用主游戏手绘立绘（ArtSamples / EnvironmentArt，四方向多帧动画），主角约 64px 高；
+//   · 角色/妖物/镇守/游商用 idle-pixel.js 的像素角色（手绘立绘仅作兜底）；背景按像素格缩放；
 //   · 地砖与墙面用主游戏贴图（art/brand-terrain、floor_tiles.png），墙体有立面与墙顶、接地阴影（AO）；
 //   · 道具来自 art/idle/props-data.js（tools/build-idle-art.py 生成）；
 //   · 动态光照（乘法光照贴图：主角灯笼、火把、火盆、法阵、技能闪光）、泛光、场景调色、上下景深模糊、暗角、浮尘/火星粒子；
@@ -11,7 +11,10 @@
 
   const R = 2;                // 画布内部分辨率倍数（世界 1px = 2 个画布像素）
   const HERO_D = 96;          // 主角立绘格子绘制尺寸（世界 px），身体约 60px
-  const MOB_D = { normal: 78, elite: 88, nemesis: 112, boss: 132 };
+  const MOB_D = { normal: 92, elite: 96, nemesis: 122, boss: 158 };
+  // 像素角色：普通 1.5 倍（每个像素 3 个屏幕点），宿敌/镇守 2 倍
+  const PX_SCALE = { hero: 2, normal: 2, elite: 2, nemesis: 2.5, boss: 2 };
+  const BG_PIX = 4;   // 背景每个像素占 4 个屏幕点（= 角色像素大小）
 
   const SCENE_STYLE = {
     tomb: {
@@ -85,6 +88,7 @@
     },
 
     ensureMapArt(map) {
+      if (typeof IdlePixel !== 'undefined') return;   // 已用像素角色，不再加载手绘立绘
       if (typeof ArtSamples === 'undefined' || !map || map.uid === this._artMapUid) return;
       this._artMapUid = map.uid;
       const keys = new Set();
@@ -261,7 +265,11 @@
         if (L) lights.push({ x: p.x, y: p.y - p.h * 0.6, color: L[0], r: L[1], flicker: p.name === 'torch' || p.name === 'brazier' || p.name === 'campfire' ? 0.25 : 0.08, flame: p.name === 'torch' ? { x: p.x, y: p.y - p.h + 6 } : null });
       }
       for (const t of torches) lights.push({ x: t.x, y: t.y - 4, color: '#ff9a40', r: 92, flicker: 0.25 });
-      this.bgCache = { uid: map.uid, canvas: c, torches, lights, artReady: art.ready };
+      // 像素化：把贴图背景缩到「每格 BG_PIX 个屏幕点」，与像素角色同一观感
+      const pc = mk(Math.ceil(c.width / BG_PIX), Math.ceil(c.height / BG_PIX)), pg = pc.getContext('2d');
+      pg.imageSmoothingEnabled = true; pg.imageSmoothingQuality = 'high';
+      pg.drawImage(c, 0, 0, pc.width, pc.height);
+      this.bgCache = { uid: map.uid, canvas: c, pix: pc, torches, lights, artReady: art.ready };
       return this.bgCache;
     },
 
@@ -331,6 +339,32 @@
 
     // ---------- 立绘 ----------
     // 画手绘立绘帧：(x, feetY) 为脚底中心，D 为 128px 格子的绘制尺寸
+    // 像素角色：脚底对齐 feetY；rot 用于死亡倒地；flash 受击加白
+    drawPx(g, key, frame, x, feetY, scale, flip, alpha = 1, flash = 0, rot = 0) {
+      if (typeof IdlePixel === 'undefined' || !IdlePixel.has(key)) return false;
+      const cv = IdlePixel.frame(key, frame);
+      if (!cv) return false;
+      const [w, h] = IdlePixel.size(key), foot = h - 3;
+      const dw = w * scale, dh = h * scale;
+      g.save();
+      g.imageSmoothingEnabled = false;
+      g.globalAlpha = alpha;
+      g.translate(Math.round(x * R) / R, Math.round(feetY * R) / R);
+      if (rot) g.rotate(rot * (flip ? 1 : -1));
+      if (flip) g.scale(-1, 1);
+      const ox = Math.round(-dw / 2 * R) / R, oy = -foot * scale;
+      g.drawImage(cv, ox, oy, dw, dh);
+      if (flash > 0) {
+        if (!this._flashCv) { this._flashCv = document.createElement('canvas'); }
+        const fc = this._flashCv; fc.width = w; fc.height = h;
+        const fg = fc.getContext('2d'); fg.drawImage(cv, 0, 0); fg.globalCompositeOperation = 'source-in'; fg.fillStyle = '#ffffff'; fg.fillRect(0, 0, w, h);
+        g.globalAlpha = Math.min(1, flash) * alpha * 0.85;
+        g.drawImage(fc, ox, oy, dw, dh);
+      }
+      g.restore();
+      return true;
+    },
+
     drawSample(g, s, x, feetY, D, flip, alpha = 1, flash = 0) {
       const d = D * (s.renderScale || 1);
       const dy = feetY - d * 124 / 128;
@@ -403,6 +437,17 @@
         this.drawSprite(g, 'pet_' + pet, px, py, 2, 1, fx < 0);
       }
       this.shadow(g, hx, hy + 1, 18);
+      const alpha0 = run.phase === 'dead' && p.dead > 1.2 ? 0.6 : 1;
+      if (typeof IdlePixel !== 'undefined') {
+        let fr = 'idle' + (Math.floor(p.t * 2.5) % 2), rot = 0;
+        if (p.dead > 0) { fr = 'hurt'; rot = Math.min(1, p.dead / 0.4) * Math.PI / 2; }
+        else if (p.cast > 0) fr = 'cast';
+        else if (p.atk > 0) fr = p.atk > 0.2 ? 'atk0' : 'atk1';
+        else if (p.hurt > 0) fr = 'hurt';
+        else if (moving) fr = 'walk' + (Math.floor(p.t * 8) % 4);
+        const flipH = fx < 0;
+        if (this.drawPx(g, 'hero', fr, hx, hy + 2, PX_SCALE.hero, flipH, alpha0, v.heroFlash > 0 ? v.heroFlash * 5 : 0, rot)) { this.drawShield(g, hx, hy, now); return; }
+      }
       let s = null;
       if (typeof ArtSamples !== 'undefined') {
         if (p.dead > 0) s = ArtSamples.deathFrame('hero', p.dead, 0.9, fx > 0);
@@ -420,7 +465,11 @@
       const alpha = run.phase === 'dead' && p.dead > 1.2 ? 0.6 : 1;
       if (s) this.drawSample(g, s, hx, hy + 2, HERO_D, false, alpha, v.heroFlash > 0 ? v.heroFlash * 4 : 0);
       else this.drawSprite(g, v.lunge > 0.3 ? 'idle_hero_atk' : 'idle_hero', hx, hy, 3, alpha, run.facing < 0);
-      if (run.shield > 0) {
+      this.drawShield(g, hx, hy, now);
+    },
+
+    drawShield(g, hx, hy, now) {
+      if (this.run.shield > 0) {
         g.save(); g.globalCompositeOperation = 'lighter';
         g.strokeStyle = 'rgba(255,210,77,0.75)'; g.lineWidth = 2;
         g.beginPath(); g.ellipse(hx, hy - 28, 26 + Math.sin(now * 8), 34 + Math.sin(now * 8), 0, 0, Math.PI * 2); g.stroke();
@@ -454,8 +503,17 @@
         g.restore();
       }
       this.shadow(g, ve.x, ve.y + 1, D * 0.2);
-      let s = null;
-      if (key && typeof ArtSamples !== 'undefined') {
+      let s = null, drawn = false;
+      if (key && typeof IdlePixel !== 'undefined' && IdlePixel.has(key)) {
+        let fr = ve.idle ? 'idle' + (Math.floor(now * 2.2 + ve.uid) % 2) : 'walk' + (Math.floor(now * 6 + ve.uid) % 4), rot = 0;
+        if (ve.dying > 0) { fr = 'hurt'; rot = Math.min(1, ve.dying / 0.35) * Math.PI / 2; }
+        else if (ve.lunge > 0) fr = ve.lunge > 0.6 ? 'atk0' : 'atk1';
+        else if (ve.flash > 0) fr = 'hurt';
+        else if (!ve.idle && Math.floor(now * 1.3 + ve.uid) % 3 === 0) fr = 'idle' + (Math.floor(now * 2.2) % 2);
+        const tierFlip = ve.idle ? (ve.uid % 2 === 0) : flip;
+        drawn = this.drawPx(g, key, fr, x, y + 2, PX_SCALE[tier], tierFlip, alpha, ve.flash > 0 ? ve.flash * 7 : 0, tier === 'boss' ? rot * 0.6 : rot);
+      }
+      if (!drawn && key && typeof ArtSamples !== 'undefined') {
         if (ve.dying > 0) s = ArtSamples.deathFrame(key, ve.dying, 0.45, flip);
         if (!s) {
           let row = 0, col = Math.floor(now * 5 + ve.uid) % 4;
@@ -464,7 +522,8 @@
           s = ArtSamples.frame(key, row, col + (ve.idle ? 0 : 4), flip);
         }
       }
-      if (s) this.drawSample(g, s, x, y + 2, D, s.flipX, alpha, ve.flash > 0 ? ve.flash * 6 : 0);
+      if (drawn) { /* 像素角色已画 */ }
+      else if (s) this.drawSample(g, s, x, y + 2, D, s.flipX, alpha, ve.flash > 0 ? ve.flash * 6 : 0);
       else {
         const sprite = (typeof IDLE_MONSTER_SPRITE !== 'undefined' && IDLE_MONSTER_SPRITE[e.type]) || 'mob_melee';
         this.drawSprite(g, sprite, x, y, tier === 'boss' || tier === 'nemesis' ? 4 : 3, alpha, flip);
@@ -524,14 +583,15 @@
       const x = mc.x * this.T, y = mc.y * this.T + 10;
       this.shadow(g, x, y + 1, 16);
       const s = typeof EnvironmentArt !== 'undefined' && EnvironmentArt.npc('merchant');
-      if (s && s.contentBounds) {
+      if (this.drawPx(g, 'merchant', 'idle' + (Math.floor(now * 1.5) % 2), x, y + 2, 2, this.run.hx < mc.x)) { /* 像素游商 */ }
+      else if (s && s.contentBounds) {
         const b = s.contentBounds, h = 62, w = h * b.sw / b.sh;
         g.save();
         if (this.run.hx < mc.x) { g.translate(x, 0); g.scale(-1, 1); g.translate(-x, 0); }
         g.drawImage(s.source, b.sx, b.sy, b.sw, b.sh, x - w / 2, y + 2 - h + Math.sin(now * 2) * 0.6, w, h);
         g.restore();
       } else this.drawSprite(g, 'npc_merchant', x, y, 3, 1, this.run.hx < mc.x);
-      this.label(g, '游商', x, y - 66, '#f7a43a', 10);
+      this.label(g, '游商', x, y - 68, '#f7a43a', 10);
     },
 
     // ---------- 特效（加色混合，自带泛光） ----------
@@ -807,7 +867,10 @@
       g.fillStyle = '#07060a'; g.fillRect(0, 0, W, H);
       g.save();
       if (v.shake > 0) g.translate((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
-      g.drawImage(bg.canvas, camX * R, camY * R, W * R, H * R, 0, 0, W, H);
+      g.imageSmoothingEnabled = false;
+      const ps = R / BG_PIX, sx0 = Math.floor(camX * ps), sy0 = Math.floor(camY * ps);
+      g.drawImage(bg.pix, sx0, sy0, Math.ceil(W * ps) + 1, Math.ceil(H * ps) + 1, sx0 / ps - camX, sy0 / ps - camY, (Math.ceil(W * ps) + 1) / ps, (Math.ceil(H * ps) + 1) / ps);
+      g.imageSmoothingEnabled = true;
       g.translate(-camX, -camY);
       const inView = (x, y, m = 70) => x > camX - m && x < camX + W + m && y > camY - m && y < camY + H + m;
 
