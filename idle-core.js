@@ -55,27 +55,27 @@
   // 与 constants.js 的 RARITY 数值一致：1 白 / 2 蓝 / 3 黄 / 4 暗金
   const RARITY = { NORMAL: 1, MAGIC: 2, RARE: 3, UNIQUE: 4 };
 
-  // 镇妖塔妖物：type 与数值沿用 game.js 普通怪物池，只换武侠名（像素图见 idle-art.js）
+  // 镇妖塔妖物：type 与数值沿用 game.js 普通怪物池，只换武侠名（立绘复用主游戏图集，见 idle-render.js）
   const MONSTERS = [
     { type: 'melee',    name: '山魈',       minFloor: 1, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: false },
-    { type: 'zombie',   name: '跳尸',       minFloor: 1, hpMult: 1.5, dmgMult: 0.8, weight: 20, ranged: false },
-    { type: 'ranged',   name: '纸人',       minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: true },
-    { type: 'skeleton', name: '毒蛛',       minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 15, ranged: false },
-    { type: 'shaman',   name: '狐妖',       minFloor: 3, hpMult: 1,   dmgMult: 1,   weight: 10, ranged: true },
+    { type: 'zombie',   name: '尸傀',       minFloor: 1, hpMult: 1.5, dmgMult: 0.8, weight: 20, ranged: false },
+    { type: 'ranged',   name: '阴兵弓手',   minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 20, ranged: true },
+    { type: 'skeleton', name: '白骨卒',     minFloor: 2, hpMult: 1,   dmgMult: 1,   weight: 15, ranged: false },
+    { type: 'shaman',   name: '魈巫',       minFloor: 3, hpMult: 1,   dmgMult: 1,   weight: 10, ranged: true },
     { type: 'ghost',    name: '游魂',       minFloor: 4, hpMult: 0.6, dmgMult: 1.2, weight: 12, ranged: false },
-    { type: 'specter',  name: '鬼火',       minFloor: 5, hpMult: 0.8, dmgMult: 1.4, weight: 10, ranged: true },
-    { type: 'mummy',    name: '机关铜人',   minFloor: 6, hpMult: 1.3, dmgMult: 0.9, weight: 10, ranged: false },
-    { type: 'vampire',  name: '蛇妖',       minFloor: 7, hpMult: 1.2, dmgMult: 1.3, weight: 10, ranged: true }
+    { type: 'specter',  name: '幽冥使',     minFloor: 5, hpMult: 0.8, dmgMult: 1.4, weight: 10, ranged: true },
+    { type: 'mummy',    name: '缠尸',       minFloor: 6, hpMult: 1.3, dmgMult: 0.9, weight: 10, ranged: false },
+    { type: 'vampire',  name: '血魔',       minFloor: 7, hpMult: 1.2, dmgMult: 1.3, weight: 10, ranged: true }
   ];
 
   // 与 enemy-system.js BASE_BOSS_MAP 一致
   const BOSSES = {
-    2: { name: '血蝠妖', hp: 400, dmg: 30, xp: 1000 },
+    2: { name: '血衣罗刹', hp: 400, dmg: 30, xp: 1000 },
     4: { name: '白骨夫人', hp: 1000, dmg: 50, xp: 2000 },
     5: { name: '铜甲尸王', hp: 1400, dmg: 65, xp: 2500 },
     7: { name: '千年树妖', hp: 2800, dmg: 75, xp: 3000 },
-    9: { name: '九尾天狐', hp: 5000, dmg: 95, xp: 5000 },
-    10: { name: '魔蛟', hp: 6000, dmg: 120, xp: 8000 }
+    9: { name: '赤焰魔君', hp: 5000, dmg: 95, xp: 5000 },
+    10: { name: '九幽冥王', hp: 6000, dmg: 120, xp: 8000 }
   };
 
   // 武学触发器：技能从“按快捷键”改为“满足条件自动出招”
@@ -201,26 +201,26 @@
   const MATERIALS = {
     shougu:   { name: '兽骨',     grade: 1, color: '#d8d0b8' },
     shila:    { name: '尸蜡',     grade: 1, color: '#c8c090' },
-    fuzhi:    { name: '符纸',     grade: 1, color: '#ffe08a' },
-    zhusi:    { name: '蛛丝',     grade: 1, color: '#e8e8f0' },
-    humao:    { name: '狐毛',     grade: 1, color: '#ff9e5e' },
+    fuzhi:    { name: '冥羽箭',   grade: 1, color: '#ffe08a' },
+    zhusi:    { name: '白骨片',   grade: 1, color: '#e8e8f0' },
+    humao:    { name: '巫蛊',     grade: 1, color: '#ff9e5e' },
     hunjing:  { name: '魂晶',     grade: 1, color: '#9fe0ff' },
     linhuo:   { name: '磷火',     grade: 1, color: '#73eff7' },
-    jingtong: { name: '精铜',     grade: 1, color: '#e0a050' },
-    shedan:   { name: '蛇胆',     grade: 1, color: '#6fcf6f' },
+    jingtong: { name: '裹尸布',   grade: 1, color: '#e0a050' },
+    shedan:   { name: '血魄',     grade: 1, color: '#e05060' },
     guyu:     { name: '古墓玉',   grade: 2, color: '#a7f070' },
     hantie:   { name: '寒铁',     grade: 2, color: '#94b0c2' },
     huojing:  { name: '火精',     grade: 2, color: '#ff6a3d' },
     youming:  { name: '幽冥石',   grade: 2, color: '#c8a0e0' },
-    xuefuyi:  { name: '血蝠翼',   grade: 3, color: '#ef7d57' },
+    xuefuyi:  { name: '罗刹血翎', grade: 3, color: '#ef7d57' },
     baigu:    { name: '白骨簪',   grade: 3, color: '#f4f4f4' },
     jiapian:  { name: '尸王甲片', grade: 3, color: '#c7a35a' },
     shuxin:   { name: '千年树心', grade: 3, color: '#38b764' },
-    huzhu:    { name: '狐火珠',   grade: 3, color: '#ff8a3d' },
-    jiaolin:  { name: '蛟鳞',     grade: 3, color: '#41a6f6' }
+    huzhu:    { name: '魔焰珠',   grade: 3, color: '#ff8a3d' },
+    jiaolin:  { name: '冥王印',   grade: 3, color: '#a070e0' }
   };
   const MONSTER_MAT = { melee: 'shougu', zombie: 'shila', ranged: 'fuzhi', skeleton: 'zhusi', shaman: 'humao', ghost: 'hunjing', specter: 'linhuo', mummy: 'jingtong', vampire: 'shedan' };
-  const BOSS_MAT = { '血蝠妖': 'xuefuyi', '白骨夫人': 'baigu', '铜甲尸王': 'jiapian', '千年树妖': 'shuxin', '九尾天狐': 'huzhu', '魔蛟': 'jiaolin' };
+  const BOSS_MAT = { '血衣罗刹': 'xuefuyi', '白骨夫人': 'baigu', '铜甲尸王': 'jiapian', '千年树妖': 'shuxin', '赤焰魔君': 'huzhu', '九幽冥王': 'jiaolin' };
 
   function sceneFor(floor) { return SCENES.find(s => floor <= s.max); }
 

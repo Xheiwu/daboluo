@@ -46,6 +46,10 @@ const IdleMode = {
     if (![2, 3, 4].includes(s.keepMin)) s.keepMin = 2;
     for (const k of ['chests', 'bounties']) if (typeof s.totals[k] !== 'number') s.totals[k] = 0;
     if (!Array.isArray(s.bounties)) s.bounties = [];
+    // 旧存档：镇守/妖物改名（与立绘统一）后迁移悬赏目标和宿敌名
+    const RENAMED = { '血蝠妖': '血衣罗刹', '九尾天狐': '赤焰魔君', '魔蛟': '九幽冥王', '跳尸': '尸傀', '纸人': '阴兵弓手', '毒蛛': '白骨卒', '狐妖': '魈巫', '鬼火': '幽冥使', '机关铜人': '缠尸', '蛇妖': '血魔' };
+    for (const b of s.bounties) if (b && RENAMED[b.target]) b.target = RENAMED[b.target];
+    if (s.nemesis && RENAMED[s.nemesis.baseName]) s.nemesis.baseName = RENAMED[s.nemesis.baseName];
     return s;
   },
 
@@ -68,6 +72,7 @@ const IdleMode = {
     }
     if (player.isDead) return;
     this.ensureDom();
+    if (this.loadArt) this.loadArt();
     const s = this.state();
     if (!this.run) {
       this.run = new IdleCore.Run(this.snapshot(), {
@@ -250,11 +255,12 @@ const IdleMode = {
           }
           break;
         case 'trigger':
-          if (visual) this.fxTrigger(e);
+          if (visual) { this.fxTrigger(e); if (this.view.pose) this.view.pose.cast = 0.4; }
           break;
         case 'heroHit':
           if (visual) {
             this.view.heroFlash = 0.15;
+            if (this.view.pose) this.view.pose.hurt = 0.15;
             const hp = this.heroPx();
             this.floatText(hp.x + 14, hp.y - 30, '-' + e.dmg, '#ef7d57');
             const src = this.view.enemies.get(e.source);
@@ -693,8 +699,8 @@ const IdleMode = {
 
   // 怪群里第 i 只妖物相对怪群中心的站位
   packOffset(i, boss) {
-    if (boss) return [[0, 0], [-34, 14], [34, 14], [0, 26]][i] || [((i % 2) ? 1 : -1) * 30, -18];
-    return [[0, 0], [-22, 10], [22, 10], [-12, -14], [12, -14], [0, 20]][i] || [((i % 2) ? 1 : -1) * 26, 24];
+    if (boss) return [[0, 0], [-46, 18], [46, 18], [0, 34]][i] || [((i % 2) ? 1 : -1) * 40, -24];
+    return [[0, 0], [-30, 13], [30, 13], [-16, -19], [16, -19], [0, 27]][i] || [((i % 2) ? 1 : -1) * 35, 32];
   },
 
   syncEnemies() {
@@ -790,7 +796,7 @@ const IdleMode = {
       ve.lunge = Math.max(0, ve.lunge - dt * 5);
       if (ve.dying > 0) {
         ve.dying += dt;
-        if (ve.dying > 0.5) v.enemies.delete(uid);
+        if (ve.dying > 0.9) v.enemies.delete(uid);
       }
     }
     // 镜头跟随
@@ -822,476 +828,6 @@ const IdleMode = {
     return themes.find(t => floor <= t.max);
   },
 
-  // 预渲染整张地图（每张地图只画一次）：地砖、墙面、黄符、锁链、火把、场景点缀、出入口
-  mapCanvas(map) {
-    if (this.bgCache.uid === map.uid) return this.bgCache;
-    const T = this.T, theme = this.themeFor(map.floor);
-    const c = document.createElement('canvas');
-    c.width = map.cols * T; c.height = map.rows * T;
-    const g = c.getContext('2d');
-    const rng = IdleCore.createRng(map.seed + 99);
-    const wall = (x, y) => !IdleCore.walkable(map, x, y);
-    const torches = [];
-    g.fillStyle = '#0b0a0e'; g.fillRect(0, 0, c.width, c.height);
-    for (let y = 0; y < map.rows; y++) {
-      for (let x = 0; x < map.cols; x++) {
-        const px = x * T, py = y * T;
-        if (!wall(x, y)) {
-          g.fillStyle = theme.floor[(x + y) % 2];
-          g.fillRect(px, py, T, T);
-          g.fillStyle = 'rgba(0,0,0,0.18)';
-          g.fillRect(px, py + T - 1, T, 1); g.fillRect(px + T - 1, py, 1, T);
-          if (rng() < 0.25) { g.fillStyle = 'rgba(255,255,255,0.05)'; g.fillRect(px + 4 + Math.floor(rng() * 20), py + 4 + Math.floor(rng() * 20), 3, 2); }
-          // 场景点缀
-          const r = rng();
-          if (r < 0.08) {
-            const ox = px + 6 + Math.floor(rng() * 14), oy = py + 8 + Math.floor(rng() * 14);
-            if (theme.deco === 'water') {
-              g.fillStyle = 'rgba(115,239,247,0.13)'; g.fillRect(ox - 4, oy, 16, 5); g.fillRect(ox - 1, oy - 2, 10, 9);
-              g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(ox + 2, oy + 1, 3, 1);
-            } else if (theme.deco === 'lava') {
-              g.fillStyle = 'rgba(239,125,87,0.6)';
-              g.fillRect(ox, oy, 7, 1); g.fillRect(ox + 6, oy + 1, 1, 4); g.fillRect(ox + 6, oy + 4, 8, 1);
-              g.fillStyle = 'rgba(255,205,117,0.6)'; g.fillRect(ox + 6, oy + 2, 1, 1);
-            } else if (theme.deco === 'abyss') {
-              g.fillStyle = 'rgba(200,160,224,0.22)';
-              g.fillRect(ox, oy, 8, 1); g.fillRect(ox + 3, oy - 3, 1, 8); g.fillRect(ox + 1, oy - 2, 1, 1); g.fillRect(ox + 6, oy + 2, 1, 1);
-            } else {
-              g.fillStyle = 'rgba(0,0,0,0.25)'; g.fillRect(ox, oy, 6, 1); g.fillRect(ox + 5, oy + 1, 1, 4);
-            }
-          } else if (r < 0.11) {
-            // 散落的白骨
-            const ox = px + 8 + Math.floor(rng() * 12), oy = py + 10 + Math.floor(rng() * 12);
-            g.fillStyle = 'rgba(232,220,192,0.45)'; g.fillRect(ox, oy, 7, 2); g.fillRect(ox - 1, oy - 1, 2, 4); g.fillRect(ox + 6, oy - 1, 2, 4);
-          }
-          continue;
-        }
-        // 墙：下方是地面的墙画成砖墙立面，其余画成墙顶
-        if (y + 1 < map.rows && !wall(x, y + 1)) {
-          g.fillStyle = theme.wall; g.fillRect(px, py, T, T);
-          for (let by = 0; by < T; by += 8) {
-            const off = (by / 8) % 2 ? 0 : 8;
-            for (let bx = -8 + off; bx < T; bx += 16) {
-              g.fillStyle = theme.brick;
-              g.fillRect(px + Math.max(0, bx) + 1, py + by + 1, Math.min(14, T - Math.max(0, bx) - 1, bx + 15), 6);
-            }
-          }
-          g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(px, py + T - 3, T, 3);
-          const d = rng();
-          if (d < 0.14) {
-            // 镇妖黄符
-            const fx = px + 12;
-            g.fillStyle = '#d8b04a'; g.fillRect(fx, py + 8, 8, 16);
-            g.fillStyle = '#b13e53'; g.fillRect(fx + 3, py + 10, 2, 12); g.fillRect(fx + 1, py + 13, 6, 1);
-          } else if (d < 0.2) {
-            // 锁链
-            g.fillStyle = '#6b6b6b';
-            for (let cy = 2; cy < T - 4; cy += 4) g.fillRect(px + 15 + ((cy / 4) % 2), py + cy, 2, 3);
-          } else if (d < 0.3) {
-            torches.push({ x: px + 16, y: py + 14 });
-          }
-          if (rng() < 0.15) { g.fillStyle = theme.moss; g.globalAlpha = 0.45; g.fillRect(px + Math.floor(rng() * 24), py + T - 6, 5, 3); g.globalAlpha = 1; }
-        } else {
-          g.fillStyle = '#100e14'; g.fillRect(px, py, T, T);
-          // 与地面相邻的墙顶描边
-          g.fillStyle = theme.wall;
-          if (y > 0 && !wall(x, y - 1)) g.fillRect(px, py, T, 4);
-          if (x > 0 && !wall(x - 1, y)) g.fillRect(px, py, 4, T);
-          if (x + 1 < map.cols && !wall(x + 1, y)) g.fillRect(px + T - 4, py, 4, T);
-        }
-      }
-    }
-    // 入口（向上的石阶）
-    const ex = Math.floor(map.entry.x) * T, ey = Math.floor(map.entry.y) * T;
-    for (let i = 0; i < 4; i++) { g.fillStyle = i % 2 ? '#6f6250' : '#8a7b64'; g.fillRect(ex + 2, ey + i * 7, T - 4, 6); }
-    // 下行阶梯
-    const sx = Math.floor(map.stairs.x) * T, sy = Math.floor(map.stairs.y) * T;
-    g.fillStyle = '#050407'; g.fillRect(sx + 1, sy + 1, T - 2, T - 2);
-    for (let i = 0; i < 4; i++) { g.fillStyle = `rgba(138,123,100,${0.85 - i * 0.2})`; g.fillRect(sx + 3 + i * 2, sy + 3 + i * 7, T - 6 - i * 4, 4); }
-    g.strokeStyle = '#c7a35a'; g.lineWidth = 1; g.strokeRect(sx + 0.5, sy + 0.5, T - 1, T - 1);
-    // 镇守殿：封印阵
-    const bossPack = map.packs.find(p => p.kind === 'boss');
-    if (bossPack) {
-      g.strokeStyle = 'rgba(177,62,83,0.55)'; g.lineWidth = 2;
-      g.beginPath(); g.arc(bossPack.x * T, bossPack.y * T + 10, 40, 0, Math.PI * 2); g.stroke();
-      g.beginPath(); g.arc(bossPack.x * T, bossPack.y * T + 10, 30, 0, Math.PI * 2); g.stroke();
-    }
-    this.bgCache = { uid: map.uid, canvas: c, torches };
-    return this.bgCache;
-  },
-
-  draw() {
-    const g = this.ctx;
-    if (!g || !this.run || !this.run.map) return;
-    const run = this.run, v = this.view, W = this.W, H = this.H, T = this.T, map = run.map;
-    if (v.mapUid !== map.uid) this.revealFog();
-    const now = performance.now() / 1000;
-    const bg = this.mapCanvas(map);
-    const camX = Math.round(v.camX || 0), camY = Math.round(v.camY || 0);
-    g.save();
-    g.imageSmoothingEnabled = false;
-    g.fillStyle = '#07060a'; g.fillRect(0, 0, W, H);
-    if (v.shake > 0) g.translate(Math.round((Math.random() - 0.5) * 4), Math.round((Math.random() - 0.5) * 4));
-    g.drawImage(bg.canvas, camX, camY, W, H, 0, 0, W, H);
-    g.save();
-    g.translate(-camX, -camY);
-    const inView = (x, y, m = 40) => x > camX - m && x < camX + W + m && y > camY - m && y < camY + H + m;
-
-    // 火把
-    for (const t of bg.torches) {
-      if (!inView(t.x, t.y) || !this.seen(t.x / T, t.y / T + 1)) continue;
-      const flick = Math.sin(now * 12 + t.x) > 0 ? 1 : 0;
-      g.fillStyle = '#5a3a1e'; g.fillRect(t.x - 1, t.y, 3, 8);
-      g.fillStyle = '#ef7d57'; g.fillRect(t.x - 2, t.y - 5 - flick, 5, 5);
-      g.fillStyle = '#ffcd75'; g.fillRect(t.x - 1, t.y - 4 - flick, 3, 3);
-      const glow = g.createRadialGradient(t.x, t.y - 3, 1, t.x, t.y - 3, 40);
-      glow.addColorStop(0, 'rgba(247,164,58,0.3)'); glow.addColorStop(1, 'rgba(247,164,58,0)');
-      g.fillStyle = glow; g.fillRect(t.x - 40, t.y - 43, 80, 80);
-    }
-    // 下行阶梯提示
-    if (this.seen(map.stairs.x, map.stairs.y)) {
-      const a = 0.5 + Math.sin(now * 3) * 0.3;
-      g.fillStyle = `rgba(255,205,117,${a})`;
-      g.font = 'bold 10px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
-      g.fillText('下', map.stairs.x * T, map.stairs.y * T - 18);
-    }
-    // 秘藏宝箱
-    const chest = map.chest;
-    if (chest && this.seen(chest.x, chest.y)) this.drawChest(g, chest.x * T, chest.y * T + 8, chest.opened, now);
-    // 藏宝洞
-    const tr = map.treasure;
-    if (tr && this.seen(tr.x, tr.y)) this.drawTreasure(g, tr.x * T, tr.y * T + 10, tr.opened, now);
-    // 游商
-    const mc = map.merchant;
-    if (mc && this.seen(mc.x, mc.y)) this.drawMerchant(g, mc, now);
-
-    // 还没惊动的怪群（看得见才画）
-    const sprites = [];
-    for (const p of map.packs) {
-      if (p.cleared || p === run.pack || !this.seen(p.x, p.y)) continue;
-      p.enemies.forEach((e, i) => {
-        if (e.hp <= 0) return;
-        const [ox, oy] = this.packOffset(i, p.kind === 'boss' || p.kind === 'nemesis');
-        sprites.push({ idle: true, ref: e, x: p.x * T + ox, y: p.y * T + 10 + oy, uid: e.uid, boss: e.tier === 'boss' || !!e.nemesis, flash: 0, lunge: 0, dying: 0 });
-      });
-    }
-    for (const ve of v.enemies.values()) sprites.push(ve);
-    const hp = this.heroPx();
-    sprites.push({ hero: true, y: hp.y });
-    sprites.sort((a, b) => a.y - b.y);
-    for (const sp of sprites) {
-      if (sp.hero) this.drawHero(g, now);
-      else if (inView(sp.x, sp.y)) this.drawEnemy(g, sp, now);
-    }
-
-    // 特效 + 飘字（世界坐标）
-    for (const f of v.fx) this.drawFx(g, f, now);
-    g.textAlign = 'center';
-    for (const t of v.texts) {
-      const k = t.t / t.life;
-      const y = t.y - k * (t.fixed ? 10 : 22);
-      g.globalAlpha = Math.min(1, (1 - k) * 2);
-      g.font = t.big ? 'bold 12px "Microsoft YaHei", sans-serif' : 'bold 10px "Microsoft YaHei", monospace';
-      g.lineWidth = 3; g.strokeStyle = '#1a1c2c';
-      g.strokeText(t.text, Math.round(t.x), Math.round(y));
-      g.fillStyle = t.color;
-      g.fillText(t.text, Math.round(t.x), Math.round(y));
-    }
-    g.globalAlpha = 1;
-
-    // 迷雾：没去过的地方全黑
-    g.fillStyle = '#07060a';
-    const x0 = Math.floor(camX / T), y0 = Math.floor(camY / T);
-    for (let y = y0; y <= y0 + Math.ceil(H / T) + 1; y++) for (let x = x0; x <= x0 + Math.ceil(W / T) + 1; x++) {
-      if (x < map.cols && y < map.rows && !v.fog[y * map.cols + x]) g.fillRect(x * T, y * T, T, T);
-    }
-    g.restore();
-
-    // 灯火：越深越暗，只照亮主角周围
-    const sx = hp.x - camX, sy = hp.y - 14 - camY;
-    const fx = map.fx || {};
-    const radius = Math.max(110, 200 - run.floor * 2.5) * (fx.light || 1);
-    const dark = Math.min(0.88, 0.3 + run.floor * 0.012 + (fx.light < 1 ? 0.08 : 0));
-    const lg = g.createRadialGradient(sx, sy, radius * 0.3, sx, sy, radius);
-    lg.addColorStop(0, 'rgba(10,8,14,0)');
-    lg.addColorStop(1, `rgba(10,8,14,${dark})`);
-    g.fillStyle = lg;
-    g.fillRect(0, 0, W, H);
-    this.drawAffixAtmos(g, map, now);
-
-    this.drawMinimap(g);
-
-    // 横幅
-    if (v.banner) {
-      const b = v.banner;
-      const a = Math.min(1, b.t * 4, (b.life - b.t) * 3);
-      g.globalAlpha = Math.max(0, a);
-      g.fillStyle = 'rgba(10,8,14,0.75)';
-      g.fillRect(0, 110, W, 22);
-      g.font = 'bold 12px "Microsoft YaHei", sans-serif';
-      g.textAlign = 'center';
-      if (b.sub) {
-        g.fillStyle = 'rgba(10,8,14,0.75)'; g.fillRect(0, 132, W, 16);
-        g.font = '10px "Microsoft YaHei", sans-serif';
-        g.fillStyle = b.subColor || '#d6c696';
-        g.fillText(b.sub, W / 2, 144);
-        g.font = 'bold 12px "Microsoft YaHei", sans-serif';
-      }
-      g.fillStyle = b.color;
-      g.fillText(b.text, W / 2, 125);
-      g.globalAlpha = 1;
-    }
-    if (run.phase === 'dead') {
-      g.fillStyle = 'rgba(80,10,20,0.35)';
-      g.fillRect(0, 0, W, H);
-    }
-    if (run.phase === 'descend') {
-      g.fillStyle = `rgba(0,0,0,${Math.min(1, 1 - run.phaseTimer / 0.8)})`;
-      g.fillRect(0, 0, W, H);
-    }
-    g.restore();
-  },
-
-  // 右上角小地图：已探索区域、看到的怪群、秘藏和阶梯
-  drawMinimap(g) {
-    const run = this.run, map = run.map, v = this.view, S = 2;
-    const mw = map.cols * S, mh = map.rows * S, ox = this.W - mw - 4, oy = 4;
-    g.fillStyle = 'rgba(7,6,10,0.75)'; g.fillRect(ox - 2, oy - 2, mw + 4, mh + 4);
-    g.strokeStyle = 'rgba(199,163,90,0.6)'; g.lineWidth = 1; g.strokeRect(ox - 2.5, oy - 2.5, mw + 5, mh + 5);
-    g.fillStyle = 'rgba(214,198,150,0.7)';
-    for (let y = 0; y < map.rows; y++) for (let x = 0; x < map.cols; x++) {
-      const i = y * map.cols + x;
-      if (v.fog[i] && map.tiles[i]) g.fillRect(ox + x * S, oy + y * S, S, S);
-    }
-    const dot = (x, y, c, r = 2) => { g.fillStyle = c; g.fillRect(ox + Math.floor(x * S) - 1, oy + Math.floor(y * S) - 1, r + 1, r + 1); };
-    for (const p of map.packs) if (!p.cleared && this.seen(p.x, p.y)) dot(p.x, p.y, p.kind === 'boss' ? '#ff8a3d' : p.kind === 'nemesis' ? '#ff4d4d' : p.kind === 'elite' ? '#5fa8ff' : '#b13e53');
-    if (map.treasure && !map.treasure.opened) dot(map.treasure.x, map.treasure.y, '#ffe14d', 3);
-    if (map.merchant && this.seen(map.merchant.x, map.merchant.y)) dot(map.merchant.x, map.merchant.y, '#f7a43a');
-    if (map.chest && !map.chest.opened && this.seen(map.chest.x, map.chest.y)) dot(map.chest.x, map.chest.y, '#ffe14d');
-    if (this.seen(map.stairs.x, map.stairs.y)) dot(map.stairs.x, map.stairs.y, '#a7f070');
-    if (Math.floor(performance.now() / 300) % 2) dot(run.hx, run.hy, '#ffffff');
-  },
-
-  drawChest(g, x, y, opened, now) {
-    x = Math.round(x); y = Math.round(y);
-    this.shadow(g, x, y + 1, 12);
-    g.fillStyle = '#1a1c2c'; g.fillRect(x - 11, y - 15, 22, 15);
-    g.fillStyle = '#8a5a2b'; g.fillRect(x - 10, y - 10, 20, 9);
-    g.fillStyle = '#c7a35a'; g.fillRect(x - 10, y - 10, 20, 2); g.fillRect(x - 2, y - 9, 4, 4);
-    if (opened) {
-      g.fillStyle = '#5a3a1e'; g.fillRect(x - 10, y - 19, 20, 5);
-    } else {
-      g.fillStyle = '#a0692f'; g.fillRect(x - 10, y - 14, 20, 4);
-      g.fillStyle = '#c7a35a'; g.fillRect(x - 10, y - 14, 20, 1);
-      const a = 0.35 + Math.sin(now * 4) * 0.25;
-      g.fillStyle = `rgba(255,225,77,${a})`; g.fillRect(x - 1, y - 22 - Math.round(Math.sin(now * 4) * 2), 2, 2);
-    }
-  },
-
-  // 藏宝洞：地上一个金光闪闪的大宝箱
-  drawTreasure(g, x, y, opened, now) {
-    x = Math.round(x); y = Math.round(y);
-    if (!opened) {
-      const r = 30 + Math.sin(now * 3) * 4;
-      const glow = g.createRadialGradient(x, y - 10, 3, x, y - 10, r);
-      glow.addColorStop(0, 'rgba(255,225,77,0.45)'); glow.addColorStop(1, 'rgba(255,225,77,0)');
-      g.fillStyle = glow; g.fillRect(x - r, y - 10 - r, r * 2, r * 2);
-    }
-    this.shadow(g, x, y + 1, 18);
-    g.fillStyle = '#1a1c2c'; g.fillRect(x - 16, y - 21, 32, 21);
-    g.fillStyle = '#7a4a1e'; g.fillRect(x - 15, y - 13, 30, 12);
-    g.fillStyle = '#ffcd75'; g.fillRect(x - 15, y - 13, 30, 2); g.fillRect(x - 3, y - 12, 6, 6); g.fillRect(x - 15, y - 13, 2, 12); g.fillRect(x + 13, y - 13, 2, 12);
-    if (opened) {
-      g.fillStyle = '#5a3a1e'; g.fillRect(x - 15, y - 26, 30, 6);
-    } else {
-      g.fillStyle = '#a0692f'; g.fillRect(x - 15, y - 20, 30, 7);
-      g.fillStyle = '#ffcd75'; g.fillRect(x - 15, y - 20, 30, 1);
-      for (let i = 0; i < 3; i++) {
-        const k = (now * 0.8 + i / 3) % 1;
-        g.fillStyle = `rgba(255,225,77,${1 - k})`;
-        g.fillRect(x - 10 + i * 10, Math.round(y - 24 - k * 16), 2, 2);
-      }
-    }
-    g.font = 'bold 9px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
-    g.lineWidth = 3; g.strokeStyle = '#1a1c2c'; g.strokeText(opened ? '藏宝洞（已空）' : '藏宝洞', x, y - 30);
-    g.fillStyle = opened ? '#94b0c2' : '#ffe14d'; g.fillText(opened ? '藏宝洞（已空）' : '藏宝洞', x, y - 30);
-  },
-
-  drawMerchant(g, mc, now) {
-    const x = Math.round(mc.x * this.T), y = Math.round(mc.y * this.T + 10);
-    const lamp = 0.25 + Math.sin(now * 6) * 0.06;
-    const glow = g.createRadialGradient(x - 10, y - 18, 2, x - 10, y - 18, 34);
-    glow.addColorStop(0, `rgba(247,164,58,${lamp})`); glow.addColorStop(1, 'rgba(247,164,58,0)');
-    g.fillStyle = glow; g.fillRect(x - 44, y - 52, 68, 68);
-    this.shadow(g, x, y + 1, 12);
-    this.drawSprite(g, 'npc_merchant', x, y + Math.round(Math.sin(now * 2) * 0.6), 2, 1, this.run.hx < mc.x);
-    g.font = 'bold 9px "Microsoft YaHei", sans-serif'; g.textAlign = 'center';
-    g.lineWidth = 3; g.strokeStyle = '#1a1c2c'; g.strokeText('游商', x, y - 36);
-    g.fillStyle = '#f7a43a'; g.fillText('游商', x, y - 36);
-  },
-
-  // 异象氛围：整屏淡淡的色调 + 飘散的光点
-  drawAffixAtmos(g, map, now) {
-    const affs = (map.affixes || []).map(id => IdleCore.AFFIXES[id]).filter(Boolean);
-    if (!affs.length) return;
-    affs.forEach((a, j) => {
-      const c = a.color;
-      const rgb = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16)).join(',');
-      g.fillStyle = `rgba(${rgb},0.06)`;
-      g.fillRect(0, 0, this.W, this.H);
-      const up = a.burn || a.name === '灵气充盈' ? -1 : 1;
-      for (let i = 0; i < 14; i++) {
-        const seed = i * 97.13 + j * 31.7;
-        const k = ((now * (0.05 + (i % 5) * 0.012)) + (seed % 1)) % 1;
-        const px = (seed * 13.7 + Math.sin(now * 0.7 + i) * 12) % this.W;
-        const py = up < 0 ? this.H * (1 - k) : this.H * k;
-        g.fillStyle = `rgba(${rgb},${0.25 + 0.35 * Math.sin(k * Math.PI)})`;
-        g.fillRect(Math.round((px + this.W) % this.W), Math.round(py), 2, 2);
-      }
-    });
-  },
-
-  drawSprite(g, id, x, y, scale, alpha = 1, flip = false) {
-    const sp = HomeArt.canvas(id, scale);
-    if (!sp) return null;
-    g.globalAlpha = alpha;
-    if (flip) {
-      g.save(); g.translate(Math.round(x), 0); g.scale(-1, 1);
-      g.drawImage(sp, Math.round(-sp.width / 2), Math.round(y - sp.height));
-      g.restore();
-    } else g.drawImage(sp, Math.round(x - sp.width / 2), Math.round(y - sp.height));
-    g.globalAlpha = 1;
-    return sp;
-  },
-
-  shadow(g, x, y, w) {
-    g.fillStyle = 'rgba(0,0,0,0.35)';
-    g.beginPath(); g.ellipse(x, y, w, w * 0.35, 0, 0, Math.PI * 2); g.fill();
-  },
-
-  drawHero(g, now) {
-    const run = this.run, v = this.view;
-    const walking = run.phase === 'walk' && run.path && run.path.length > 0;
-    const { x: hx, y: hy } = this.heroPx();
-    const x = Math.round(hx);
-    const bob = walking ? Math.round(Math.abs(Math.sin(now * 10)) * -2) : Math.round(Math.sin(now * 3) * 0.6);
-    // 攻击时向目标扑一下
-    let lx = 0, ly = 0;
-    if (v.lunge > 0 && run.pack) {
-      const dx = run.pack.x * this.T - hx, dy = run.pack.y * this.T + 10 - hy, d = Math.hypot(dx, dy) || 1;
-      lx = dx / d * v.lunge * 8; ly = dy / d * v.lunge * 8;
-    }
-    const y = Math.round(hy + bob + ly);
-    const flip = run.facing < 0;
-    // 宠物跟在身后
-    const pet = player.home && player.home.activePet;
-    if (pet) {
-      const px = x - 22 * run.facing, py = Math.round(hy - 2 + Math.sin(now * (walking ? 10 : 3)) * 2);
-      this.shadow(g, px, hy - 1, 9);
-      this.drawSprite(g, 'pet_' + pet, px, py, 2, 1, flip);
-    }
-    this.shadow(g, x, hy + 1, 12);
-    const alpha = run.phase === 'dead' ? 0.45 : 1;
-    this.drawSprite(g, v.lunge > 0.3 ? 'idle_hero_atk' : 'idle_hero', x + Math.round(lx), y, 2, alpha, flip);
-    if (v.heroFlash > 0) {
-      g.fillStyle = 'rgba(239,125,87,0.35)';
-      g.fillRect(x - 16, y - 32, 32, 32);
-    }
-    if (run.shield > 0) {
-      g.strokeStyle = 'rgba(255,210,77,0.8)';
-      g.lineWidth = 2;
-      g.beginPath(); g.arc(x, y - 16, 22 + Math.sin(now * 8), 0, Math.PI * 2); g.stroke();
-    }
-  },
-
-  drawEnemy(g, ve, now) {
-    const e = ve.ref;
-    const scale = ve.boss ? 3 : 2;
-    const sprite = (typeof IDLE_MONSTER_SPRITE !== 'undefined' && IDLE_MONSTER_SPRITE[e.type]) || 'mob_melee';
-    const bob = Math.round(Math.sin(now * (ve.idle ? 2 : 4) + ve.uid) * 1.2);
-    // 近战扑向主角
-    let lx = 0, ly = 0;
-    if (ve.lunge > 0) {
-      const hp = this.heroPx();
-      const dx = hp.x - ve.x, dy = hp.y - ve.y, d = Math.hypot(dx, dy) || 1;
-      lx = dx / d * ve.lunge * 12; ly = dy / d * ve.lunge * 12;
-    }
-    const x = Math.round(ve.x + lx), y = Math.round(ve.y + bob + ly);
-    const alpha = ve.dying > 0 ? Math.max(0, 1 - ve.dying * 2) : 1;
-    this.shadow(g, ve.x, ve.y + 1, ve.boss ? 20 : 11);
-    if (e.nemesis && alpha > 0.5) {
-      const r = 26 + Math.sin(now * 5) * 3;
-      const aura = g.createRadialGradient(ve.x, ve.y - 22, 4, ve.x, ve.y - 22, r);
-      aura.addColorStop(0, 'rgba(255,60,60,0.35)'); aura.addColorStop(1, 'rgba(255,60,60,0)');
-      g.fillStyle = aura; g.fillRect(ve.x - r, ve.y - 22 - r, r * 2, r * 2);
-    }
-    const jitter = ve.flash > 0 ? Math.round((Math.random() - 0.5) * 3) : 0;
-    const flip = this.run && this.run.hx * this.T < ve.x;
-    this.drawSprite(g, sprite, x + jitter, y, scale, alpha, flip);
-    if (e.tier === 'elite' && !e.nemesis && alpha > 0.5) {
-      g.strokeStyle = 'rgba(95,168,255,0.8)';
-      g.lineWidth = 1;
-      g.strokeRect(x - 17, y - 33, 34, 34);
-    }
-    if (ve.dying > 0) return;
-    const top = y - 16 * scale - 6;
-    if (!ve.idle) {
-      const bw = ve.boss ? 56 : 28;
-      g.fillStyle = '#1a1c2c'; g.fillRect(x - bw / 2 - 1, top - 1, bw + 2, 5);
-      g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : (e.tier === 'elite' ? '#5fa8ff' : '#b13e53');
-      g.fillRect(x - bw / 2, top, Math.max(0, Math.round(bw * e.hp / e.maxHp)), 3);
-    }
-    if (ve.boss || e.tier === 'elite') {
-      g.font = '9px "Microsoft YaHei", sans-serif';
-      g.textAlign = 'center';
-      g.lineWidth = 3; g.strokeStyle = '#1a1c2c';
-      g.strokeText(e.name, x, top - 3);
-      g.fillStyle = e.nemesis ? '#ff4d4d' : ve.boss ? '#ff8a3d' : '#9fc6ff';
-      g.fillText(e.nemesis ? `${e.name} ☠` : e.name, x, top - 3);
-    }
-  },
-
-  drawFx(g, f) {
-    const k = Math.max(0, f.t) / f.life;
-    if (f.t < 0) return;
-    if (f.kind === 'slash') {
-      g.strokeStyle = f.crit ? 'rgba(255,205,117,' + (1 - k) + ')' : 'rgba(244,244,244,' + (1 - k) + ')';
-      g.lineWidth = f.crit ? 3 : 2;
-      g.beginPath(); g.arc(f.x, f.y, 12 + k * 6, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
-    } else if (f.kind === 'fireball') {
-      const x = f.x0 + (f.x1 - f.x0) * Math.min(1, k * 1.4), y = f.y0 + (f.y1 - f.y0) * Math.min(1, k * 1.4);
-      const r = k < 0.7 ? 5 : 5 + (k - 0.7) * 50;
-      g.fillStyle = `rgba(239,125,87,${k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3})`;
-      g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
-      g.fillStyle = 'rgba(255,205,117,0.9)';
-      g.beginPath(); g.arc(x, y, r * 0.5, 0, Math.PI * 2); g.fill();
-    } else if (f.kind === 'lightning') {
-      g.strokeStyle = `rgba(115,239,247,${1 - k})`;
-      g.lineWidth = 2;
-      g.beginPath(); g.moveTo(f.x0, f.y0);
-      const seg = 6;
-      for (let i = 1; i <= seg; i++) {
-        const tt = i / seg;
-        const j = i === seg ? 0 : (Math.sin((f.seed * 100 + i) * 12.9898) * 43758.5453 % 1) * 14;
-        g.lineTo(f.x0 + (f.x1 - f.x0) * tt + j, f.y0 + (f.y1 - f.y0) * tt);
-      }
-      g.stroke();
-      g.strokeStyle = `rgba(244,244,244,${1 - k})`; g.lineWidth = 1; g.stroke();
-    } else if (f.kind === 'dart' || f.kind === 'bolt') {
-      const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k;
-      const ang = Math.atan2(f.y1 - f.y0, f.x1 - f.x0);
-      g.strokeStyle = f.color || '#ffcd75';
-      g.lineWidth = 2;
-      g.beginPath(); g.moveTo(x - Math.cos(ang) * 7, y - Math.sin(ang) * 7); g.lineTo(x, y); g.stroke();
-    } else if (f.kind === 'bell') {
-      g.strokeStyle = `rgba(255,210,77,${1 - k})`;
-      g.lineWidth = 3;
-      const hp = this.heroPx();
-      g.beginPath(); g.arc(hp.x, hp.y - 16, 14 + k * 30, 0, Math.PI * 2); g.stroke();
-    }
-  },
-
-  // ---------- 界面 ----------
   ensureDom() {
     if (document.getElementById('idle-mode')) return;
     const wrap = document.createElement('div');
@@ -1371,17 +907,6 @@ const IdleMode = {
     window.addEventListener('resize', () => this.resize());
   },
 
-  resize() {
-    if (!this.canvas) return;
-    const stage = this.canvas.parentElement;
-    const r = stage.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    // 能放大 2 倍以上时取整数倍保证像素清晰，否则按比例铺满
-    let s = Math.min(r.width / this.W, r.height / this.H);
-    if (s >= 2) s = Math.floor(s);
-    this.canvas.style.width = Math.floor(this.W * s) + 'px';
-    this.canvas.style.height = Math.floor(this.H * s) + 'px';
-  },
 
   renderUI(full) {
     if (!this.run || typeof document === 'undefined') return;

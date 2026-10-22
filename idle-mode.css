@@ -26,7 +26,7 @@
 .idle-xpbar span { line-height: 10px; font-size: 9px; }
 .idle-xpbar .idle-fill { height: 100%; background: linear-gradient(180deg, #a7f070, #38b764); }
 .idle-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-#idle-canvas { image-rendering: pixelated; image-rendering: crisp-edges; border: 1px solid #2a2433; background: #0b0a0e; }
+#idle-canvas { image-rendering: auto; border: 1px solid #2a2433; background: #0b0a0e; }
 .idle-skills { display: flex; gap: 6px; justify-content: center; }
 .idle-skill {
     position: relative; flex: 1; max-width: 96px; height: 34px; border: 1px solid var(--c); border-radius: 4px;
