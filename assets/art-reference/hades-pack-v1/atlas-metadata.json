@@ -1,0 +1,99 @@
+{
+  "characters": {
+    "note": "These are distinct action key poses, NOT continuous animation frames. Do not claim smooth animation or real eight-direction coverage. All images generated with built-in image_gen then alpha components normalized with one shared scale per atlas.",
+    "hero": {
+      "file": "hero-poses.png",
+      "size": [
+        3600,
+        724
+      ],
+      "frameSize": [
+        900,
+        724
+      ],
+      "columns": 4,
+      "rows": 1,
+      "anchor": [
+        450,
+        680
+      ],
+      "poses": [
+        "idle",
+        "run",
+        "downward_sword_cleave",
+        "palm_qi_cast"
+      ],
+      "alpha": true,
+      "facing": "right, fixed angled top-down 3/4"
+    },
+    "jiangshi": {
+      "file": "jiangshi-poses.png",
+      "size": [
+        2700,
+        800
+      ],
+      "frameSize": [
+        900,
+        800
+      ],
+      "columns": 3,
+      "rows": 1,
+      "anchor": [
+        450,
+        750
+      ],
+      "poses": [
+        "idle",
+        "jump_attack",
+        "hit_recoil"
+      ],
+      "alpha": true,
+      "facing": "right, fixed angled top-down 3/4",
+      "note": "Attack feet are intentionally airborne above shared ground anchor. Do not rescale individual frames."
+    }
+  },
+  "environment": {
+    "date_utc": "2026-10-23",
+    "generator": "built-in image_gen",
+    "tiles": {
+      "file": "ground_tiles_4x4.png",
+      "size": [
+        1774,
+        887
+      ],
+      "layout": "4 columns x 4 rows",
+      "row_content": [
+        "4 teal stone",
+        "4 cracked stone",
+        "4 antique gold patterns",
+        "4 blood traces"
+      ],
+      "limits": "Transparent RGBA verified; no in-engine seam or collision test. Normalize tile bounds after slicing before claiming seamless tiling."
+    },
+    "decorations": {
+      "file": "decorations_7_padded.png",
+      "size": [
+        1774,
+        887
+      ],
+      "layout": "4 columns x 2 rows; last cell empty; objects should be segmented by alpha bounds, not blindly cut at equal half-height",
+      "content": [
+        "ghost-fire brazier",
+        "stone column",
+        "red torn flag",
+        "gravestone",
+        "hooded statue",
+        "red maple shrub",
+        "chain"
+      ],
+      "alpha_bbox": [
+        43,
+        25,
+        1746,
+        859
+      ],
+      "limits": "Static sprites only. Fire and flag animation need separate animation/effects. No outside ground plane/cast shadows. World size and pivots to set after slicing."
+    },
+    "prompt_summary": "Reference-only style: dark gothic wuxia, Hades-like handpainted high-contrast ink outlines, hard shadows, teal stone, red and antique gold accents. Fixed isometric camera. Tiles: 16 equal diamond surfaces separated by transparency. Decorations: seven isolated complete props plus one blank slot. Second decorations generation restored flame tip and transparent border."
+  }
+}
