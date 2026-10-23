@@ -95,7 +95,7 @@
     if (o.alpha != null) ctx.globalAlpha = o.alpha;
     const dx = -s.ax / RS, dy = -s.ay / RS, dw = s.c.width / RS, dh = s.c.height / RS;
     ctx.drawImage(o.img || s.c, dx, dy, dw, dh);
-    if (o.flash > 0) { ctx.globalAlpha = Math.min(0.7, o.flash) * (o.alpha == null ? 1 : o.alpha); ctx.drawImage(o.flashImg || s.white, dx, dy, dw, dh); }
+    if (o.flash > 0) { ctx.globalAlpha = Math.min(0.55, o.flash) * (o.alpha == null ? 1 : o.alpha); ctx.drawImage(o.flashImg || s.white, dx, dy, dw, dh); }
     ctx.restore();
   }
 
@@ -164,6 +164,7 @@
     { id: 'dash', name: '血影斩', glyph: '斩', color: '#ff4a3a', cd: 9, t: 5.0, flash: 0 },
   ];
   let mobs = [], parts = [], slashes = [], rings = [], decals = [], nums = [], coins = [], orbs = [], ghosts = [], teles = [];
+  let slow = 0, dim = 0, zoomP = 0, flashes = [], pillars = [], lines = [];
   let T = 0, hitstop = 0, shake = 0, shakeX = 0, shakeY = 0, kills = 0, gold = 0, gems = 0, spawnT = 0.4, wave = 1, autoOn = true, goldPop = 0;
   const cam = { x: 0, y: 0 };
   const stick = { on: false, bx: 0, by: 0, x: 0, y: 0, id: null };
@@ -198,7 +199,7 @@
   }
   function hurtMob(m, dmg, crit, kx, ky, kb = 1) {
     if (m.st === 'dead' || m.st === 'spawn') return false;
-    m.hp -= dmg; m.flash = 1; num(m.x, m.y, dmg, crit);
+    m.hp -= dmg; m.flash = kb < 0.5 ? 0.45 : 1; num(m.x, m.y, dmg, crit);
     const a = Math.atan2(ky, kx);
     spark(m.x, m.y, crit ? 14 : 8, a, 0.7, crit ? 380 : 260); ink(m.x, m.y, crit ? 7 : 3, a, 220);
     
@@ -221,8 +222,9 @@
     if (kills % 8 === 0) wave++;
   }
   function updMob(m, dt) {
-    m.t += dt; m.flash = Math.max(0, m.flash - dt * 9); m.atkCd -= dt;
+    m.t += dt; m.flash = Math.max(0, m.flash - dt * 9); m.atkCd -= dt; m.clawCd = (m.clawCd || 0) - dt;
     const dh = isoD(m.x, m.y, hero.x, hero.y);
+    const faceHero = () => { m.face = hero.x >= m.x ? 1 : -1; };
     switch (m.st) {
       case 'spawn':
         if (rnd() < 0.5) ghostFire(m.x, m.y, 4, 1, 20);
@@ -233,26 +235,45 @@
         const rest = 0.16, air = 0.4, cyc = rest + air;
         m.hopT += dt;
         const p = m.hopT % cyc;
-        if (p < rest) { m.z = 0; if (m.hopT - dt < Math.floor(m.hopT / cyc) * cyc + 0.001 || (p < dt)) { m.sx = m.x; m.sy = m.y; const a = Math.atan2((hero.y - m.y) * 2, hero.x - m.x) + R(-0.35, 0.35); const L = Math.min(46, Math.max(0, dh - 50)); m.tx = m.x + Math.cos(a) * L; m.ty = m.y + Math.sin(a) * L / 2; m.face = hero.x >= m.x ? 1 : -1; dust(m.x, m.y, 3, 30); } }
+        if (p < rest) { m.z = 0; if (p < dt) { m.sx = m.x; m.sy = m.y; const a = Math.atan2((hero.y - m.y) * 2, hero.x - m.x) + R(-0.35, 0.35); const L = Math.min(46, Math.max(0, dh - 50)); m.tx = m.x + Math.cos(a) * L; m.ty = m.y + Math.sin(a) * L / 2; faceHero(); dust(m.x, m.y, 3, 30); } }
         else { const u = (p - rest) / air; m.z = Math.sin(u * Math.PI) * 17; m.x = lerp(m.sx, m.tx, u); m.y = lerp(m.sy, m.ty, u); }
-        if (dh < 96 && m.atkCd <= 0 && p < rest) { m.st = 'windup'; m.t = 0; m.z = 0; m.face = hero.x >= m.x ? 1 : -1;
-          m.tx = hero.x + hero.vx * 0.35; m.ty = hero.y + hero.vy * 0.35; const f = { x: m.tx, y: m.ty }; keepIn(f, LIM); m.tx = f.x; m.ty = f.y;
-          teles.push({ m, x: m.tx, y: m.ty, age: 0, life: 0.95 }); }
-        break;
-      }
-      case 'windup':
-        m.z = 0; if (m.t > 0.5) { m.st = 'leap'; m.t = 0; m.sx = m.x; m.sy = m.y; dust(m.x, m.y, 6, 70); }
-        break;
-      case 'leap': {
-        const u = Math.min(1, m.t / 0.42); m.x = lerp(m.sx, m.tx, u); m.y = lerp(m.sy, m.ty, u); m.z = Math.sin(u * Math.PI) * 52;
-        if (u >= 1) {
-          m.st = 'recover'; m.t = 0; m.z = 0; m.atkCd = R(1.4, 2.2);
-          dust(m.x, m.y, 14, 120); ring(m.x, m.y, 8, 54, 0.35, '#c9a054', 3); addShake(4); decal(m.x, m.y, 14, '#05070a', 0.4);
-          if (isoD(m.x, m.y, hero.x, hero.y) < 48 && hero.inv <= 0) hurtHero(10, m);
+        if (p < rest && dh < 66 && m.clawCd <= 0) {
+          // 近身：抓挠（扇形预警）
+          m.st = 'claw'; m.t = 0; m.z = 0; faceHero(); m.ang = Math.atan2((hero.y - m.y) * 2, hero.x - m.x);
+          teles.push({ m, type: 'cone', x: m.x, y: m.y, ang: m.ang, age: 0, life: 0.42 });
+        } else if (p < rest && dh < 150 && dh > 40 && m.atkCd <= 0) {
+          // 中距：蓄力扑杀（落点圆圈 + 轨迹预警）
+          m.st = 'windup'; m.t = 0; m.z = 0; faceHero();
+          m.tx = hero.x + hero.vx * 0.4; m.ty = hero.y + hero.vy * 0.4; const f = { x: m.tx, y: m.ty }; keepIn(f, LIM); m.tx = f.x; m.ty = f.y;
+          teles.push({ m, type: 'leap', x: m.tx, y: m.ty, sx: m.x, sy: m.y, age: 0, life: 0.62 + 0.42 });
         }
         break;
       }
-      case 'recover': m.z = 0; if (m.t > 0.5) { m.st = 'hop'; m.t = 0; m.hopT = 0; } break;
+      case 'windup':
+        m.z = 0; if (m.t > 0.62) { m.st = 'leap'; m.t = 0; m.sx = m.x; m.sy = m.y; dust(m.x, m.y, 8, 90); }
+        break;
+      case 'leap': {
+        const u = Math.min(1, m.t / 0.42); m.x = lerp(m.sx, m.tx, u); m.y = lerp(m.sy, m.ty, u); m.z = Math.sin(u * Math.PI) * 58;
+        if (u >= 1) {
+          m.st = 'recover'; m.t = 0; m.z = 0; m.atkCd = R(1.6, 2.4);
+          dust(m.x, m.y, 18, 150); ring(m.x, m.y, 8, 62, 0.4, '#ff3a2a', 4); ring(m.x, m.y, 4, 40, 0.25, '#c9a054', 2); addShake(5); decal(m.x, m.y, 16, '#05070a', 0.45);
+          if (isoD(m.x, m.y, hero.x, hero.y) < 52 && hero.inv <= 0) hurtHero(11, m);
+        }
+        break;
+      }
+      case 'claw':
+        m.z = 0; if (m.t > 0.42) {
+          m.st = 'swipe'; m.t = 0; m.clawCd = R(1.3, 1.9);
+          slashes.push({ kind: 'claw', x: m.x + Math.cos(m.ang) * 34, y: m.y + Math.sin(m.ang) * 17, ang: m.ang, face: m.face, age: 0, life: 0.26 });
+          const dx = hero.x - m.x, dy = (hero.y - m.y) * 2; let da = Math.atan2(dy, dx) - m.ang; da = Math.atan2(Math.sin(da), Math.cos(da));
+          if (Math.hypot(dx, dy) < 84 && Math.abs(da) < 0.95 && hero.inv <= 0) hurtHero(7, m);
+        }
+        break;
+      case 'swipe':
+        m.x += Math.cos(m.ang) * 150 * dt; m.y += Math.sin(m.ang) * 75 * dt; m.z = Math.sin(Math.min(1, m.t / 0.16) * Math.PI) * 8;
+        if (m.t > 0.16) { m.st = 'recover'; m.t = 0; m.z = 0; }
+        break;
+      case 'recover': m.z = 0; if (m.t > 0.45) { m.st = 'hop'; m.t = 0; m.hopT = 0; } break;
       case 'hit':
         m.z = 0; m.x += m.kx * dt; m.y += m.ky * dt; m.kx *= Math.pow(0.0008, dt); m.ky *= Math.pow(0.0008, dt);
         if (m.t > 0.26) { m.st = 'hop'; m.t = 0; m.hopT = 0; }
@@ -266,7 +287,7 @@
     if (m.st !== 'dead') keepIn(m, 0.9);
   }
   function hurtHero(d, m) {
-    hero.hp -= d; hero.inv = 0.6; hero.red = 1; addShake(7); num(hero.x, hero.y, d, false, '#ff5a48');
+    hero.hp -= d; hero.inv = 0.6; hero.red = 1; addShake(7); flash('#ff1a0a', 0.16, 0.22); num(hero.x, hero.y, d, false, '#ff5a48');
     const a = Math.atan2(hero.y - m.y, hero.x - m.x); hero.vx += Math.cos(a) * 220; hero.vy += Math.sin(a) * 110;
     ink(hero.x, hero.y, 8, a, 200); spark(hero.x, hero.y, 6, a, 1, 200, '#ff6a4a');
     if (hero.hp <= 0) { hero.hp = hero.maxhp; ring(hero.x, hero.y, 10, 160, 0.6, '#3fe6d0', 6); ghostFire(hero.x, hero.y, 30, 30, 80); num(hero.x, hero.y - 10, '回魂', true, '#46f0d8'); for (const o of mobs) if (o.st !== 'dead') hurtMob(o, 0, false, o.x - hero.x, o.y - hero.y, 1.6); }
@@ -278,24 +299,27 @@
   const countIn = r => alive().filter(m => isoD(hero.x, hero.y, m.x, m.y) < r).length;
   function rollDmg(base) { const crit = rnd() < 0.22; return [Math.round(base * R(0.9, 1.15) * (crit ? 1.8 : 1)), crit]; }
 
+  // 三连：① 横扫  ② 突进斩  ③ 跃起大劈
+  const COMBO = { 1: { wind: 0.06, hold: 0.2, dur: 0.32 }, 2: { wind: 0.06, hold: 0.2, dur: 0.34 }, 3: { wind: 0.18, hold: 0.26, dur: 0.6 } };
+  function flash(col, a, life = 0.25) { flashes.push({ col, a, life, age: 0 }); }
   function startAct(type, target) {
     const a = { type, t: 0, target, ang: Math.atan2((target.y - hero.y) * 2, target.x - hero.x), done: {} };
-    if (type === 'atk') { hero.combo = hero.comboT > 0 ? (hero.combo % 3) + 1 : 1; a.n = hero.combo; a.dur = a.n === 3 ? 0.5 : 0.36; }
-    if (type === 'palm') a.dur = 0.55;
-    if (type === 'spin') a.dur = 0.72;
-    if (type === 'dash') { a.dur = 0.62; const d = isoD(hero.x, hero.y, target.x, target.y), L = Math.min(250, d + 70); a.sx = hero.x; a.sy = hero.y; const e = { x: hero.x + Math.cos(a.ang) * L, y: hero.y + Math.sin(a.ang) * L / 2 }; keepIn(e, LIM); a.ex = e.x; a.ey = e.y; a.hit = new Set(); }
+    if (type === 'atk') { hero.combo = hero.comboT > 0 ? (hero.combo % 3) + 1 : 1; a.n = hero.combo; Object.assign(a, COMBO[a.n]); }
+    if (type === 'palm') a.dur = 0.62;
+    if (type === 'spin') { a.dur = 0.95; a.rot = 0; }
+    if (type === 'dash') { a.dur = 0.8; const d = isoD(hero.x, hero.y, target.x, target.y), L = Math.min(260, d + 80); a.sx = hero.x; a.sy = hero.y; const e = { x: hero.x + Math.cos(a.ang) * L, y: hero.y + Math.sin(a.ang) * L / 2 }; keepIn(e, LIM); a.ex = e.x; a.ey = e.y; a.hit = new Set(); }
     hero.face = Math.cos(a.ang) >= 0 ? 1 : -1; hero.act = a;
   }
-  function slashFx(x, y, ang, r, o = {}) { slashes.push({ x, y, ang, r, age: 0, life: o.life || 0.2, dir: o.dir || 1, w: o.w || 0.5, col: o.col || 'gold', arc: o.arc || 2.4 }); }
-  function meleeHit(ang, range, half, base, kb) {
+  function slashFx(x, y, ang, r, o = {}) { slashes.push(Object.assign({ kind: 'arc', x, y, ang, r, age: 0, life: 0.2, dir: 1, w: 0.5, col: 'gold', arc: 2.4, flat: 0.55, mirror: 1, lift: 30 }, o)); }
+  function meleeHit(ang, range, half, base, kb, ox = hero.x, oy = hero.y, crit) {
     let hit = 0;
     for (const m of alive()) {
-      const dx = m.x - hero.x, dy = (m.y - hero.y) * 2, d = Math.hypot(dx, dy);
+      const dx = m.x - ox, dy = (m.y - oy) * 2, d = Math.hypot(dx, dy);
       if (d > range + m.r) continue;
       let da = Math.atan2(dy, dx) - ang; da = Math.atan2(Math.sin(da), Math.cos(da));
       if (Math.abs(da) > half && d > 26) continue;
-      const [dmg, crit] = rollDmg(base); hurtMob(m, dmg, crit, dx, dy / 2, kb); hit++;
-      if (crit) addShake(6);
+      const r = rollDmg(base); if (crit) r[1] = true; hurtMob(m, r[0], r[1], dx, dy / 2, kb); hit++;
+      if (r[1]) addShake(6);
     }
     return hit;
   }
@@ -303,54 +327,88 @@
     const a = hero.act; a.t += dt;
     const ca = Math.cos(a.ang), sa = Math.sin(a.ang) / 2;
     if (a.type === 'atk') {
-      if (a.t >= 0.06 && !a.done.hit) {
-        a.done.hit = 1; const big = a.n === 3;
-        hero.vx += ca * (big ? 320 : 200); hero.vy += sa * (big ? 320 : 200);
-        slashFx(hero.x + ca * 26, hero.y + sa * 26, a.ang, big ? 74 : 60, { dir: a.n === 2 ? -1 : 1, w: big ? 0.62 : 0.5, life: big ? 0.24 : 0.19, arc: big ? 3 : 2.4 });
-        const h = meleeHit(a.ang, big ? 100 : 86, big ? 1.3 : 1.1, big ? 30 : 18, big ? 1.4 : 0.8);
-        if (h) { hitstop = Math.max(hitstop, big ? 0.085 : 0.05); addShake(big ? 6 : 3); }
-        else spark(hero.x + ca * 40, hero.y + sa * 40, 3, a.ang, 0.4, 140);
+      if (a.t >= a.wind && !a.done.hit) {
+        a.done.hit = 1;
+        if (a.n === 1) {
+          // 横扫：宽、扁的金色弧
+          hero.vx += ca * 180; hero.vy += sa * 180;
+          slashFx(hero.x + ca * 16, hero.y + sa * 16, a.ang, 78, { arc: 3.1, w: 0.42, flat: 0.4, life: 0.2, lift: 34, dir: hero.face });
+          const h = meleeHit(a.ang, 98, 1.45, 17, 0.8); if (h) { hitstop = Math.max(hitstop, 0.05); addShake(3); }
+        } else if (a.n === 2) {
+          // 突进斩：向前冲一大步，直线刀芒
+          hero.vx += ca * 560; hero.vy += sa * 560;
+          slashes.push({ kind: 'thrust', x: hero.x, y: hero.y, ang: a.ang, len: 160, age: 0, life: 0.24 });
+          for (let i = 0; i < 4; i++) ghosts.push({ x: hero.x + ca * i * 14, y: hero.y + sa * i * 14, face: hero.face, pose: 'run', age: -i * 0.025, life: 0.26 });
+          const h = meleeHit(a.ang, 150, 0.5, 21, 1.1); if (h) { hitstop = Math.max(hitstop, 0.055); addShake(4); }
+        } else {
+          // 跃起大劈：竖向刀弧 + 落地震波
+          const px = hero.x + ca * 46, py = hero.y + sa * 46; hero.vx += ca * 140; hero.vy += sa * 140;
+          slashFx(hero.x + ca * 14, hero.y + sa * 14, -0.5, 84, { arc: 3.2, w: 0.55, flat: 1, mirror: hero.face, life: 0.3, lift: 50 });
+          ring(px, py, 10, 120, 0.45, '#ffd25a', 6); ring(px, py, 6, 74, 0.3, '#fff6d8', 3); dust(px, py, 20, 170); decal(px, py, 20, '#040506', 0.65);
+          spark(px, py, 24, -Math.PI / 2, 1.5, 440);
+          const h = meleeHit(a.ang, 106, 1.2, 30, 1.6) + meleeHit(0, 72, 9, 12, 1.2, px, py);
+          hitstop = Math.max(hitstop, h ? 0.11 : 0.05); addShake(h ? 10 : 5); zoomP = Math.max(zoomP, 0.045);
+        }
       }
     } else if (a.type === 'palm') {
       const hx = hero.x + HAND[0] * SLICE.hero.scale * hero.face, hz = -HAND[1] * SLICE.hero.scale;
-      if (a.t < 0.28) { for (let i = 0; i < 2; i++) { const an = R(0, TAU), rr = R(30, 50); parts.push({ t: 'gather', x: hx + Math.cos(an) * rr, y: hero.y + 0.5, z: hz + Math.sin(an) * rr, tx: hx, tz: hz, life: 0.25, age: 0 }); } }
-      if (a.t >= 0.28 && !a.done.fire) {
+      if (!a.done.ch) { a.done.ch = 1; ring(hx, hero.y, 70, 6, 0.32, '#46f0d8', 3); ring(hero.x, hero.y, 60, 20, 0.32, '#46f0d8', 2); }
+      if (a.t < 0.32) for (let i = 0; i < 4; i++) { const an = R(0, TAU), rr = R(36, 70); parts.push({ t: 'gather', x: hx + Math.cos(an) * rr, y: hero.y + 0.5, z: hz + Math.sin(an) * rr, tx: hx, tz: hz, life: 0.25, age: 0 }); }
+      if (a.t >= 0.32 && !a.done.fire) {
         a.done.fire = 1; const tg = a.target.st === 'dead' ? nearest(400) || a.target : a.target;
         const an = Math.atan2((tg.y - hero.y) * 2, tg.x - hero.x);
-        orbs.push({ x: hx, y: hero.y + 1, z: hz, vx: Math.cos(an) * 430, vy: Math.sin(an) * 215, tz: 34, age: 0, tx: tg.x, ty: tg.y });
-        ring(hx, hero.y, 4, 30, 0.25, '#46f0d8', 3); hero.vx -= Math.cos(an) * 80; addShake(2);
+        for (const off of [-0.34, 0, 0.34]) orbs.push({ x: hx, y: hero.y + 1, z: hz, vx: Math.cos(an + off) * 470, vy: Math.sin(an + off) * 235, tz: 34, age: 0, big: off === 0 });
+        ring(hx, hero.y, 4, 46, 0.3, '#e9fffb', 4); hero.vx -= Math.cos(an) * 120; addShake(5); flash('#46f0d8', 0.14, 0.18); zoomP = Math.max(zoomP, 0.03);
       }
     } else if (a.type === 'spin') {
-      if (Math.floor(a.t / 0.07) !== Math.floor((a.t - dt) / 0.07)) hero.face = -hero.face;
-      for (const k of [0.12, 0.34, 0.56]) if (a.t >= k && !a.done[k]) {
-        a.done[k] = 1; const an = a.t * 14;
-        slashFx(hero.x, hero.y, an, 82, { life: 0.26, w: 0.42, arc: 3.6, dir: 1 }); slashFx(hero.x, hero.y, an + Math.PI, 82, { life: 0.26, w: 0.42, arc: 3.6, dir: 1 });
-        const h = meleeHit(0, 112, 9, 16, 1.2); if (h) { hitstop = Math.max(hitstop, 0.04); addShake(4); }
-        spark(hero.x, hero.y, 10, R(0, TAU), Math.PI, 300);
+      if (Math.floor(a.t / 0.06) !== Math.floor((a.t - dt) / 0.06)) hero.face = -hero.face;
+      a.rot += dt * 16;
+      for (const m of alive()) { const d = isoD(hero.x, hero.y, m.x, m.y); if (d < 180 && d > 46) { m.x += (hero.x - m.x) / d * 110 * dt; m.y += (hero.y - m.y) / d * 110 * dt; } }
+      spark(hero.x, hero.y, 2, R(0, TAU), 0.3, 340);
+      for (const k of [0.1, 0.24, 0.38, 0.52, 0.66]) if (a.t >= k && !a.done[k]) {
+        a.done[k] = 1;
+        slashFx(hero.x, hero.y, a.rot, 96, { life: 0.22, w: 0.38, arc: 3.8, lift: 26 }); slashFx(hero.x, hero.y, a.rot + Math.PI, 96, { life: 0.22, w: 0.38, arc: 3.8, lift: 26 });
+        const h = meleeHit(0, 120, 9, 13, 0.3); if (h) { hitstop = Math.max(hitstop, 0.03); addShake(4); }
+      }
+      if (a.t >= 0.8 && !a.done.burst) {
+        a.done.burst = 1; ring(hero.x, hero.y, 20, 180, 0.5, '#ffd25a', 8); ring(hero.x, hero.y, 10, 120, 0.35, '#fff6d8', 3);
+        spark(hero.x, hero.y, 44, 0, Math.PI, 560); dust(hero.x, hero.y, 22, 220); flash('#ffcf5a', 0.2, 0.25);
+        addShake(11); zoomP = Math.max(zoomP, 0.05); hitstop = 0.08; slow = 0.15; meleeHit(0, 160, 9, 24, 2.2);
       }
     } else if (a.type === 'dash') {
-      if (a.t < 0.09) { /* 蓄势 */ }
-      else if (a.t < 0.27) {
-        const u = (a.t - 0.09) / 0.18, px = hero.x, py = hero.y; hero.x = lerp(a.sx, a.ex, u * (2 - u)); hero.y = lerp(a.sy, a.ey, u * (2 - u)); hero.vx = hero.vy = 0;
-        hero.trail += dt; if (hero.trail > 0.022) { hero.trail = 0; ghosts.push({ x: hero.x, y: hero.y, face: hero.face, pose: 'run', age: 0, life: 0.32 }); }
-        for (const m of alive()) if (!a.hit.has(m) && isoD(m.x, m.y, hero.x, hero.y) < 46) { a.hit.add(m); const [dmg, crit] = rollDmg(36); hurtMob(m, dmg, crit, m.x - px, (m.y - py), 1.2); }
+      if (a.t < 0.5) dim = Math.max(dim, Math.min(1, a.t / 0.12) * 0.55);
+      if (a.t < 0.12) { if (!a.done.c) { a.done.c = 1; ring(hero.x, hero.y, 60, 8, 0.12, '#ff4a3a', 3); } }
+      else if (a.t < 0.28) {
+        const u = (a.t - 0.12) / 0.16, px = hero.x, py = hero.y; hero.x = lerp(a.sx, a.ex, u * (2 - u)); hero.y = lerp(a.sy, a.ey, u * (2 - u)); hero.vx = hero.vy = 0;
+        hero.trail += dt; if (hero.trail > 0.018) { hero.trail = 0; ghosts.push({ x: hero.x, y: hero.y, face: hero.face, pose: 'run', age: 0, life: 0.4, col: 'red' }); }
+        for (const m of alive()) if (!a.hit.has(m) && isoD(m.x, m.y, hero.x, hero.y) < 52) { a.hit.add(m); const [dmg, crit] = rollDmg(14); hurtMob(m, dmg, crit, m.x - px, (m.y - py), 0.4); }
         dust(hero.x, hero.y, 1, 40);
       } else if (!a.done.fin) {
-        a.done.fin = 1; hitstop = 0.09; addShake(10);
-        slashFx(hero.x + ca * 26, hero.y + sa * 26, a.ang + 0.6, 76, { col: 'blood', life: 0.3, w: 0.6, arc: 2.6 });
-        slashFx(hero.x + ca * 26, hero.y + sa * 26, a.ang - 0.6, 76, { col: 'blood', life: 0.3, w: 0.6, arc: 2.6, dir: -1 });
-        meleeHit(a.ang, 104, 1.4, 34, 1.6); ink(hero.x + ca * 40, hero.y + sa * 40, 16, a.ang, 300); decal(hero.x + ca * 40, hero.y + sa * 20, 16, '#4a0808', 0.55);
+        a.done.fin = 1; hitstop = 0.06; addShake(8);
+        lines.push({ x0: a.sx, y0: a.sy, x1: hero.x, y1: hero.y, age: 0, life: 0.7 });
+        slashFx(hero.x + ca * 26, hero.y + sa * 26, a.ang + 0.6, 80, { col: 'blood', life: 0.3, w: 0.6, arc: 2.6 });
+        slashFx(hero.x + ca * 26, hero.y + sa * 26, a.ang - 0.6, 80, { col: 'blood', life: 0.3, w: 0.6, arc: 2.6, dir: -1 });
+        meleeHit(a.ang, 104, 1.4, 20, 1.0);
+      }
+      if (a.t >= 0.5 && !a.done.iai) {
+        // 一闪：路径上所有被穿过的敌人同时爆开
+        a.done.iai = 1; flash('#ff2a1a', 0.32, 0.32); addShake(15); hitstop = 0.12; slow = 0.22; zoomP = Math.max(zoomP, 0.06);
+        for (const m of a.hit) if (m.st !== 'dead') {
+          slashFx(m.x, m.y, 0.75, 52, { col: 'blood', life: 0.3, w: 0.5, arc: 2.2, flat: 1, lift: 56 });
+          slashFx(m.x, m.y, Math.PI - 0.75, 52, { col: 'blood', life: 0.3, w: 0.5, arc: 2.2, flat: 1, lift: 56, dir: -1 });
+          const [dmg] = rollDmg(46); hurtMob(m, dmg, true, m.x - a.sx, m.y - a.sy, 1.4); ink(m.x, m.y, 12, R(0, TAU), 320);
+        }
       }
     }
-    if (a.t >= a.dur) { hero.act = null; if (a.type === 'atk') { hero.atkCd = 0.04; hero.comboT = 0.55; } }
+    if (a.t >= a.dur) { hero.act = null; if (a.type === 'atk') { hero.atkCd = 0.04; hero.comboT = 0.6; } }
   }
   function heroPose() {
     const a = hero.act;
     if (a) {
-      if (a.type === 'atk') return a.t < 0.06 ? 'idle' : a.t < (a.n === 3 ? 0.38 : 0.27) ? 'cleave' : 'idle';
+      if (a.type === 'atk') return a.t < a.wind ? 'idle' : a.t < a.wind + a.hold ? (a.n === 2 ? 'run' : 'cleave') : 'idle';
       if (a.type === 'palm') return 'cast';
       if (a.type === 'spin') return 'cleave';
-      if (a.type === 'dash') return a.t < 0.09 ? 'idle' : a.t < 0.27 ? 'run' : 'cleave';
+      if (a.type === 'dash') return a.t < 0.12 ? 'idle' : a.t < 0.28 ? 'run' : a.t < 0.62 ? 'cleave' : 'idle';
     }
     return hero.moveT > 0.05 ? 'run' : 'idle';
   }
@@ -378,7 +436,12 @@
     if (AUTO && !stick.on && !ix && !iy) { [ix, iy] = autoStick(dt); stick.vis = [ix, iy]; } else stick.vis = [ix, iy];
     shake = Math.max(0, shake - dt * 30); shakeX = R(-1, 1) * shake; shakeY = R(-1, 1) * shake * 0.7;
     SK.forEach(s => { s.flash = Math.max(0, s.flash - dt * 3); });
+    zoomP = Math.max(0, zoomP - dt * 0.25); dim = Math.max(0, dim - dt * 1.6);
+    for (const f of flashes) f.age += dt; flashes = flashes.filter(f => f.age < f.life);
     if (hitstop > 0) { hitstop -= dt; return; }
+    if (slow > 0) { slow -= dt; dt *= 0.4; }
+    for (const L of [pillars, lines]) for (const q of L) q.age += dt;
+    pillars = pillars.filter(q => q.age < q.life); lines = lines.filter(q => q.age < q.life);
 
     // 主角
     const SPEED = 168;
@@ -400,7 +463,7 @@
         if (s.t > 0) continue;
         let tg = null;
         if (s.id === 'palm') tg = nearest(320);
-        if (s.id === 'spin' && (countIn(130) >= 2 || countIn(95) >= 1)) tg = nearest(130);
+        if (s.id === 'spin' && countIn(140) >= 1) tg = nearest(140);
         if (s.id === 'dash') { const n = nearest(260); if (n && isoD(hero.x, hero.y, n.x, n.y) > 70) tg = n; }
         if (tg) { startAct(s.id, tg); s.t = s.cd; s.flash = 1; started = true; break; }
       }
@@ -422,13 +485,15 @@
     // 法球
     for (const o of orbs) {
       o.age += dt; o.x += o.vx * dt; o.y += o.vy * dt; o.z = lerp(o.z, o.tz, 1 - Math.pow(0.02, dt));
-      ghostFire(o.x, o.y, o.z, 2, 18);
+      ghostFire(o.x, o.y, o.z, o.big ? 4 : 2, 22);
       let boom = o.age > 0.9 || Math.abs(o.x) / HW + Math.abs(o.y) / HH > 0.95;
       for (const m of alive()) if (isoD(o.x, o.y, m.x, m.y) < 30) boom = true;
       if (boom) {
-        o.dead = true; ring(o.x, o.y, 10, 92, 0.42, '#46f0d8', 6); ring(o.x, o.y, 4, 60, 0.3, '#e9fffb', 3); ghostFire(o.x, o.y, 20, 34, 120); addShake(7); hitstop = Math.max(hitstop, 0.05);
-        decal(o.x, o.y, 22, '#06110f', 0.5);
-        for (const m of alive()) if (isoD(o.x, o.y, m.x, m.y) < 92) { const [dmg, crit] = rollDmg(34); hurtMob(m, dmg, crit, m.x - o.x, m.y - o.y, 1.5); }
+        o.dead = true; const big = o.big ? 1.25 : 1;
+        ring(o.x, o.y, 10, 100 * big, 0.45, '#46f0d8', 7); ring(o.x, o.y, 4, 64 * big, 0.3, '#e9fffb', 3); ring(o.x, o.y, 20, 140 * big, 0.6, '#1d8f80', 2);
+        pillars.push({ x: o.x, y: o.y, age: 0, life: 0.55, s: big }); ghostFire(o.x, o.y, 20, 40, 160); spark(o.x, o.y, 14, -Math.PI / 2, 1.4, 360, '#aafff0');
+        addShake(o.big ? 9 : 6); hitstop = Math.max(hitstop, 0.05); decal(o.x, o.y, 24, '#051311', 0.55);
+        for (const m of alive()) if (isoD(o.x, o.y, m.x, m.y) < 96 * big) { const [dmg, crit] = rollDmg(o.big ? 34 : 24); hurtMob(m, dmg, crit, m.x - o.x, m.y - o.y, 1.5); }
       }
     }
     orbs = orbs.filter(o => !o.dead);
@@ -468,13 +533,39 @@
   }
 
   // ---------- 绘制 ----------
+  function drawThrust(s) {
+    const u = s.age / s.life, ca = Math.cos(s.ang), sa = Math.sin(s.ang) / 2;
+    const len = s.len * Math.min(1, u / 0.3), fade = 1 - Math.max(0, (u - 0.4) / 0.6);
+    const x0 = s.x, y0 = s.y - 34, x1 = x0 + ca * len, y1 = y0 + sa * len, nx = -sa, ny = ca, k = 1 / Math.hypot(nx, ny);
+    const quad = (w) => { ctx.beginPath(); ctx.moveTo(x0 + nx * k * w * 0.3, y0 + ny * k * w * 0.3); ctx.lineTo(x1, y1); ctx.lineTo(x0 - nx * k * w * 0.3, y0 - ny * k * w * 0.3); ctx.lineTo(x0 - ca * 10, y0 - sa * 10); ctx.closePath(); };
+    ctx.save(); ctx.globalAlpha = 0.5 * fade; ctx.fillStyle = '#030303'; quad(30); ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.7 * fade; ctx.fillStyle = '#e08a20'; quad(26); ctx.fill();
+    ctx.globalAlpha = fade; ctx.fillStyle = '#ffd864'; quad(14); ctx.fill(); ctx.fillStyle = '#fffbe8'; quad(5); ctx.fill();
+    ctx.translate(x1, y1); ctx.scale(1, 0.5); ctx.strokeStyle = '#fff2c0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 8 + u * 30, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  function drawClaw(s) {
+    const u = s.age / s.life, fade = 1 - u;
+    ctx.save(); ctx.translate(s.x, s.y - 50); ctx.scale(s.face, 1);
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const off = (i - 1) * 10, p = Math.min(1, u / 0.35);
+      ctx.beginPath(); ctx.moveTo(-18 + off, -26); ctx.quadraticCurveTo(off + 6, -4, lerp(-18 + off, 22 + off, p), lerp(-26, 26, p));
+      ctx.globalAlpha = 0.8 * fade; ctx.strokeStyle = '#050303'; ctx.lineWidth = 7; ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter'; ctx.strokeStyle = '#ff3a26'; ctx.lineWidth = 4; ctx.stroke(); ctx.strokeStyle = '#ffd0b0'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.restore();
+  }
   function drawSlash(s) {
+    if (s.kind === 'thrust') return drawThrust(s);
+    if (s.kind === 'claw') return drawClaw(s);
     const u = s.age / s.life;
     const head = Math.min(1, u / 0.45), tail = Math.max(0, (u - 0.25) / 0.75);
     const a0 = -s.arc / 2, span = s.arc;
     const from = a0 + span * tail, to = a0 + span * head;
     if (to <= from) return;
-    ctx.save(); ctx.translate(s.x, s.y - 30); ctx.scale(1, 0.55); ctx.rotate(s.ang); if (s.dir < 0) ctx.scale(1, -1);
+    ctx.save(); ctx.translate(s.x, s.y - s.lift); ctx.scale(s.mirror, s.flat); ctx.rotate(s.ang); if (s.dir < 0) ctx.scale(1, -1);
     const path = (R0, wid) => {
       ctx.beginPath(); const n = 22;
       for (let i = 0; i <= n; i++) { const a = lerp(from, to, i / n); ctx.lineTo(Math.cos(a) * R0, Math.sin(a) * R0); }
@@ -532,25 +623,41 @@
     ctx.drawImage(s.c, p.x - s.ax / RS, p.y - s.ay / RS, s.c.width / RS, s.c.height / RS);
   }
   function shadow(x, y, rx, a = 0.5) { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.beginPath(); ctx.ellipse(x, y, rx, rx * 0.38, 0, 0, TAU); ctx.fill(); }
-  function drawHero() {
-    const pose = heroPose(), s = SPR.hero[pose], a = hero.act;
+  function heroXform(pose, a) {
     let ox = 0, oy = 0, rot = 0, sx = 1, sy = 1;
     if (pose === 'run' && !a) { oy = -Math.abs(Math.sin(hero.bob)) * 4; rot = 0.04 * hero.face; sy = 1 + Math.sin(hero.bob * 2) * 0.02; }
     if (pose === 'idle' && !a) { sy = 1 + Math.sin(T * 2.4) * 0.012; }
-    if (a && a.type === 'atk' && a.t < 0.06) { ox = -hero.face * 4; rot = -0.07 * hero.face; sy = 0.97; }
-    if (a && a.type === 'dash' && a.t < 0.09) { sy = 0.92; sx = 1.05; ox = -hero.face * 5; }
-    if (a && a.type === 'palm') { const k = Math.min(1, a.t / 0.28); sy = 1 + k * 0.02; }
-    shadow(hero.x, hero.y, 22, 0.55);
+    if (a && a.type === 'atk') {
+      const k = Math.min(1, a.t / a.wind), st = a.t - a.wind;
+      if (a.n === 1) { if (st < 0) { ox = -hero.face * 5 * k; rot = -0.09 * hero.face * k; } else { rot = 0.05 * hero.face * Math.max(0, 1 - st / 0.2); sx = 1 + 0.06 * Math.max(0, 1 - st / 0.1); } }
+      if (a.n === 2) { if (st < 0) { ox = -hero.face * 9 * k; sx = 1 - 0.06 * k; sy = 1 + 0.04 * k; } else { const q = Math.max(0, 1 - st / 0.15); sx = 1 + 0.12 * q; sy = 1 - 0.06 * q; rot = 0.08 * hero.face * q; } }
+      if (a.n === 3) { if (st < 0) { oy = -Math.sin(k * Math.PI / 2) * 22; rot = -0.16 * hero.face * k; sy = 1 + 0.05 * k; } else { const q = Math.max(0, 1 - st / 0.09); oy = -q * 10; sy = 1 - 0.1 * (1 - q) * Math.max(0, 1 - st / 0.2); sx = 1 + 0.08 * Math.max(0, 1 - st / 0.2); } }
+    }
+    if (a && a.type === 'dash' && a.t < 0.12) { const k = a.t / 0.12; sy = 1 - 0.1 * k; sx = 1 + 0.06 * k; ox = -hero.face * 7 * k; }
+    if (a && a.type === 'palm') { const k = Math.min(1, a.t / 0.32); sy = 1 + k * 0.03; if (a.t > 0.32) ox = -hero.face * 4 * Math.max(0, 1 - (a.t - 0.32) / 0.15); }
+    return { ox, oy, rot, sx, sy };
+  }
+  function drawHero() {
+    const pose = heroPose(), s = SPR.hero[pose], a = hero.act;
+    if (pose !== hero.pose) { hero.prev = hero.pose; hero.prevX = hero.lastX; hero.blendT = T; hero.pose = pose; }
+    const f = heroXform(pose, a); hero.lastX = f;
+    shadow(hero.x, hero.y, 22 * (1 + f.oy / 80), 0.55);
     if (hero.inv > 0 && Math.floor(T * 20) % 2 && hero.red < 0.3) ctx.globalAlpha = 0.6;
-    drawSpr(s, hero.x + ox, hero.y + oy, hero.face, { rot, sx, sy, flash: hero.red * 0.7, flashImg: s.red });
+    // 姿势切换时，上一姿势残留 70ms，形成运动模糊式的过渡
+    const bk = 1 - (T - (hero.blendT || -9)) / 0.07;
+    if (bk > 0 && hero.prev && SPR.hero[hero.prev]) { const p = hero.prevX || f; drawSpr(SPR.hero[hero.prev], hero.x + p.ox, hero.y + p.oy, hero.face, { rot: p.rot, sx: p.sx, sy: p.sy, alpha: 0.45 * bk }); }
+    drawSpr(s, hero.x + f.ox, hero.y + f.oy, hero.face, { rot: f.rot, sx: f.sx, sy: f.sy, flash: hero.red * 0.7, flashImg: s.red });
     ctx.globalAlpha = 1;
   }
   function drawMob(m) {
     let pose = 'idle', sx = 1, sy = 1, rot = 0, ox = 0, alpha = 1;
-    if (m.st === 'leap') pose = 'jump';
+    if (m.st === 'leap' || m.st === 'swipe') pose = 'jump';
     if (m.st === 'hit' || m.st === 'dead') pose = 'hit';
     if (m.st === 'hop') { const p = m.hopT % 0.56; if (p < 0.16) { const k = Math.sin(p / 0.16 * Math.PI); sy = 1 - k * 0.07; sx = 1 + k * 0.04; } else sy = 1.03; }
-    if (m.st === 'windup') { const k = Math.min(1, m.t / 0.5); sy = 1 - k * 0.12; sx = 1 + k * 0.06; ox = Math.sin(T * 60) * 1.5 * k; }
+    if (m.st === 'windup') { const k = Math.min(1, m.t / 0.62); sy = 1 - k * 0.14; sx = 1 + k * 0.07; ox = Math.sin(T * 60) * 2 * k; }
+    if (m.st === 'claw') { const k = Math.min(1, m.t / 0.42); rot = -0.12 * m.face * k; ox = -m.face * 6 * k; sy = 1 - 0.05 * k; }
+    if (m.st === 'swipe') { rot = 0.1 * m.face; sx = 1.08; }
+    const warn = m.st === 'windup' || m.st === 'claw';
     if (m.st === 'recover') { const k = Math.max(0, 1 - m.t / 0.2); sy = 1 - k * 0.1; sx = 1 + k * 0.06; }
     if (m.st === 'hit') { rot = -0.08 * m.face * Math.max(0, 1 - m.t / 0.26); }
     if (m.st === 'dead') { rot = -m.face * Math.min(0.35, m.t * 0.8); alpha = Math.max(0, 1 - m.t / 0.9); }
@@ -558,7 +665,7 @@
     const s = SPR.js[pose];
     shadow(m.x, m.y, 22 * (1 - Math.min(0.4, m.z / 120)), 0.5 * alpha);
     if (rise > 0) { ctx.save(); ctx.beginPath(); ctx.rect(m.x - 90, m.y - 220, 180, 222); ctx.clip(); }
-    drawSpr(s, m.x + ox, m.y - m.z + rise, m.face, { sx, sy, rot, alpha, flash: m.flash });
+    drawSpr(s, m.x + ox, m.y - m.z + rise, m.face, warn && m.flash <= 0 ? { sx, sy, rot, alpha, flash: 0.12 + 0.26 * (0.5 + 0.5 * Math.sin(T * 32)), flashImg: s.red } : { sx, sy, rot, alpha, flash: m.flash });
     if (rise > 0) ctx.restore();
     if (m.st !== 'dead' && m.st !== 'spawn' && m.hp < m.maxhp) {
       const w = 36, y = m.y - m.z - 128;
@@ -584,8 +691,8 @@
     const y = o.y - o.z;
     shadow(o.x, o.y, 9, 0.35);
     ctx.globalCompositeOperation = 'lighter';
-    const g = ctx.createRadialGradient(o.x, y, 0, o.x, y, 26); g.addColorStop(0, 'rgba(230,255,250,1)'); g.addColorStop(0.3, 'rgba(70,240,216,.9)'); g.addColorStop(1, 'rgba(10,80,70,0)');
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(o.x, y, 26, 0, TAU); ctx.fill();
+    const OR = o.big ? 34 : 24, g = ctx.createRadialGradient(o.x, y, 0, o.x, y, OR); g.addColorStop(0, 'rgba(230,255,250,1)'); g.addColorStop(0.3, 'rgba(70,240,216,.9)'); g.addColorStop(1, 'rgba(10,80,70,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(o.x, y, OR, 0, TAU); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = '#04100e'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(o.x, y, 8 + Math.sin(T * 30), 0, TAU); ctx.stroke();
   }
@@ -597,7 +704,7 @@
     const g = lightG, k = lw / W;
     g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, lw, lh);
     g.fillStyle = 'rgba(2,5,8,0.62)'; g.fillRect(0, 0, lw, lh);
-    g.setTransform(k, 0, 0, k, (W / 2 - cam.x + shakeX) * k, (H * 0.5 - cam.y + shakeY) * k);
+    worldT(g, k);
     g.globalCompositeOperation = 'destination-out';
     const hole = (x, y, r, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(0,0,0,${a})`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.ellipse(x, y, r, r * 0.75, 0, 0, TAU); g.fill(); };
     hole(hero.x, hero.y - 40, 190, 0.75);
@@ -607,11 +714,16 @@
     for (const s of slashes) hole(s.x, s.y - 30, 110, 0.7 * (1 - s.age / s.life));
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(lightCv, 0, 0, cv.width, cv.height);
   }
+  function worldT(c = ctx, k = RS) {
+    // 以主角为焦点做冲击缩放：screen = (world - F) * a + screenF
+    const a = k * (1 + zoomP), fx = hero.x, fy = hero.y - 40;
+    c.setTransform(a, 0, 0, a, (fx - cam.x + W / 2 + shakeX) * k - fx * a, (fy - cam.y + H * 0.5 + shakeY) * k - fy * a);
+  }
   function render() {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const bg = ctx.createRadialGradient(cv.width / 2, cv.height * 0.45, 0, cv.width / 2, cv.height * 0.45, cv.height * 0.7);
     bg.addColorStop(0, '#0d1a1b'); bg.addColorStop(1, '#020304'); ctx.fillStyle = bg; ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.setTransform(RS, 0, 0, RS, (W / 2 - cam.x + shakeX) * RS, (H * 0.5 - cam.y + shakeY) * RS);
+    worldT();
     ctx.drawImage(groundCv, GB.x0, GB.y0, groundCv.width / RS, groundCv.height / RS);
     // 地面污迹
     for (const d of decals) {
@@ -619,12 +731,33 @@
       for (const [bx, by, br] of d.blobs) { ctx.beginPath(); ctx.ellipse(d.x + bx * d.s, d.y + by * d.s, d.s * br, d.s * br * 0.5, 0, 0, TAU); ctx.fill(); }
     }
     ctx.globalAlpha = 1;
-    // 跳尸落点预警
+    // 跳尸预警：扑杀=轨迹+落点圈逐渐填满；抓挠=扇形
     for (const t of teles) {
-      const u = Math.min(1, t.age / 0.5);
-      ctx.strokeStyle = `rgba(255,50,40,${0.35 + 0.4 * u})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(t.x, t.y, 48, 18.5, 0, 0, TAU); ctx.stroke();
-      ctx.fillStyle = `rgba(200,20,20,${0.22 * u})`; ctx.beginPath(); ctx.ellipse(t.x, t.y, 48 * u, 18.5 * u, 0, 0, TAU); ctx.fill();
+      if (t.type === 'cone') {
+        const u = Math.min(1, t.age / 0.42), R0 = 86;
+        ctx.save(); ctx.translate(t.x, t.y); ctx.scale(1, 0.5);
+        ctx.fillStyle = `rgba(255,30,20,${0.12 + 0.12 * u})`; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R0, t.ang - 0.95, t.ang + 0.95); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = `rgba(255,60,40,${0.35})`; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R0 * u, t.ang - 0.95, t.ang + 0.95); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = u > 0.85 ? '#fff' : 'rgba(255,70,50,.9)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, 0, R0, t.ang - 0.95, t.ang + 0.95); ctx.stroke();
+        ctx.restore(); continue;
+      }
+      const u = Math.min(1, t.age / 0.62), mx = t.m.st === 'leap' ? t.sx : t.m.x, my = t.m.st === 'leap' ? t.sy : t.m.y;
+      // 轨迹箭头
+      const dx = t.x - mx, dy = t.y - my, L = Math.hypot(dx, dy * 2) || 1;
+      ctx.fillStyle = 'rgba(255,50,40,.55)';
+      for (let i = 1; i < L / 22; i++) {
+        const q = i * 22 / L; if (q > u + 0.15) break;
+        const x = lerp(mx, t.x, q), y = lerp(my, t.y, q), an = Math.atan2(dy, dx);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(an); ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, -5); ctx.lineTo(-1, 0); ctx.lineTo(-4, 5); ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      const blink = u > 0.8 && Math.floor(T * 20) % 2;
+      ctx.lineWidth = 2.5; ctx.strokeStyle = blink ? '#ffffff' : `rgba(255,50,40,${0.5 + 0.4 * u})`;
+      ctx.beginPath(); ctx.ellipse(t.x, t.y, 52, 20, 0, 0, TAU); ctx.stroke();
+      ctx.fillStyle = `rgba(220,20,15,${0.18 + 0.2 * u})`; ctx.beginPath(); ctx.ellipse(t.x, t.y, 52 * u, 20 * u, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,90,60,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(t.x - 14, t.y); ctx.lineTo(t.x + 14, t.y); ctx.moveTo(t.x, t.y - 6); ctx.lineTo(t.x, t.y + 6); ctx.stroke();
     }
+    // 血影斩压暗
+    if (dim > 0) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = `rgba(10,0,0,${dim})`; ctx.fillRect(0, 0, cv.width, cv.height); ctx.restore(); }
     // 圆环
     for (const r of rings) {
       const u = r.age / r.life, rr = lerp(r.r0, r.r1, 1 - Math.pow(1 - u, 2.5));
@@ -643,17 +776,47 @@
     list.sort((a, b) => a[0] - b[0]);
     for (const [, k, e] of list) {
       if (k === 0) drawProp(e); else if (k === 1) drawMob(e); else if (k === 2) drawHero(); else if (k === 3) drawCoin(e); else if (k === 4) drawOrb(e);
-      else { const u = e.age / e.life; ctx.globalCompositeOperation = 'lighter'; drawSpr(SPR.hero[e.pose], e.x, e.y, e.face, { img: SPR.hero[e.pose].ghost, alpha: 0.5 * (1 - u) }); ctx.globalCompositeOperation = 'source-over'; }
+      else if (e.age >= 0) { const u = e.age / e.life; ctx.globalCompositeOperation = 'lighter'; drawSpr(SPR.hero[e.pose], e.x, e.y, e.face, { img: e.col === 'red' ? SPR.hero[e.pose].red : SPR.hero[e.pose].ghost, alpha: 0.55 * (1 - u) }); ctx.globalCompositeOperation = 'source-over'; }
     }
     drawParts('norm');
     for (const s of slashes) drawSlash(s);
     ctx.globalCompositeOperation = 'lighter'; drawParts('add');
+    if (hero.act && hero.act.type === 'spin') {
+      const a = hero.act, rot = a.rot, k = Math.min(1, a.t / 0.1) * Math.max(0, Math.min(1, (a.dur - a.t) / 0.15));
+      ctx.save(); ctx.translate(hero.x, hero.y - 26); ctx.scale(1, 0.45);
+      const gg = ctx.createRadialGradient(0, 0, 20, 0, 0, 130); gg.addColorStop(0, 'rgba(255,200,80,0)'); gg.addColorStop(0.7, `rgba(255,190,70,${0.18 * k})`); gg.addColorStop(1, 'rgba(255,160,40,0)');
+      ctx.fillStyle = gg; ctx.beginPath(); ctx.arc(0, 0, 130, 0, TAU); ctx.fill();
+      for (let i = 0; i < 4; i++) { const r = 62 + i * 18, sp = rot * (1 + i * 0.25) + i; ctx.strokeStyle = i % 2 ? `rgba(255,240,190,${0.8 * k})` : `rgba(255,190,60,${0.9 * k})`; ctx.lineWidth = 7 - i * 1.3; ctx.beginPath(); ctx.arc(0, 0, r, sp, sp + 2.4); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, r, sp + Math.PI, sp + Math.PI + 2.4); ctx.stroke(); }
+      ctx.restore();
+      ctx.strokeStyle = `rgba(255,220,140,${0.5 * k})`; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 6; i++) { const an = rot * 1.4 + i * TAU / 6, r = 100; ctx.beginPath(); ctx.ellipse(hero.x, hero.y - 40 - i * 6, r - i * 6, (r - i * 6) * 0.4, 0, an, an + 0.9); ctx.stroke(); }
+    }
+    for (const q of pillars) {
+      const u = q.age / q.life, h = 190 * q.s * Math.min(1, u / 0.25), w = 34 * q.s * (1 - u * 0.5), al = 1 - u;
+      const g = ctx.createLinearGradient(0, q.y, 0, q.y - h); g.addColorStop(0, `rgba(200,255,245,${al})`); g.addColorStop(0.4, `rgba(70,240,216,${0.8 * al})`); g.addColorStop(1, 'rgba(10,90,80,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(q.x, q.y - h / 2, w, h / 2, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(240,255,252,${al})`; ctx.beginPath(); ctx.ellipse(q.x, q.y - h * 0.35, w * 0.3, h * 0.35, 0, 0, TAU); ctx.fill();
+    }
+    for (const q of lines) {
+      const u = q.age / q.life, al = 1 - u;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(200,20,20,${0.7 * al})`; ctx.lineWidth = 14 * (1 - u * 0.7); ctx.beginPath(); ctx.moveTo(q.x0, q.y0 - 34); ctx.lineTo(q.x1, q.y1 - 34); ctx.stroke();
+      ctx.strokeStyle = `rgba(255,230,210,${al})`; ctx.lineWidth = 3 * (1 - u * 0.7); ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
     // 火盆辉光
     for (const p of props) if (p.k === 'brazier') { const r = 46 + Math.sin(T * 11 + p.t) * 4, g = ctx.createRadialGradient(p.x, p.y - 64, 0, p.x, p.y - 64, r); g.addColorStop(0, 'rgba(90,255,225,.35)'); g.addColorStop(1, 'rgba(0,80,70,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y - 64, r, 0, TAU); ctx.fill(); }
     ctx.globalCompositeOperation = 'source-over';
     drawLighting();
-    // 伤害数字（在光照之上）
-    ctx.setTransform(RS, 0, 0, RS, (W / 2 - cam.x + shakeX) * RS, (H * 0.5 - cam.y + shakeY) * RS);
+    // 伤害数字与预警标记（在光照之上）
+    worldT();
+    for (const m of mobs) if (m.st === 'windup' || m.st === 'claw') {
+      const k = Math.min(1, m.t / 0.12), y = m.y - 150 - Math.abs(Math.sin(T * 14)) * 4;
+      ctx.save(); ctx.translate(m.x, y); ctx.scale(0.6 + 0.6 * k, 0.6 + 0.6 * k);
+      ctx.fillStyle = '#0a0302'; ctx.beginPath(); ctx.moveTo(-9, -16); ctx.lineTo(9, -16); ctx.lineTo(4, 6); ctx.lineTo(-4, 6); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.arc(0, 14, 6, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#ff3526'; ctx.beginPath(); ctx.moveTo(-6, -13); ctx.lineTo(6, -13); ctx.lineTo(2.5, 3); ctx.lineTo(-2.5, 3); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.arc(0, 14, 3.6, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (const n of nums) {
       const u = n.age / n.life, pop = u < 0.15 ? 1 + (1 - u / 0.15) * (n.crit ? 0.9 : 0.5) : 1;
@@ -662,6 +825,9 @@
       ctx.font = `900 ${(n.crit ? 22 : 16) * pop}px "STKaiti","KaiTi","Noto Serif CJK SC",serif`;
       ctx.lineWidth = 4; ctx.strokeStyle = '#0a0503'; ctx.strokeText(n.v, x, y); ctx.fillStyle = n.col; ctx.fillText(n.v, x, y);
     }
+    ctx.globalAlpha = 1;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const f of flashes) { ctx.globalAlpha = f.a * (1 - f.age / f.life); ctx.fillStyle = f.col; ctx.fillRect(0, 0, cv.width, cv.height); }
     ctx.globalAlpha = 1;
     drawUI();
   }
